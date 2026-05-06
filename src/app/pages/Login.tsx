@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { toast } from 'sonner';
+import { useAuth } from '../store/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -26,11 +29,15 @@ export default function Login() {
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await login(formData);
+      toast.success('Login successful');
       setIsLoading(false);
-      navigate('/');
-    }, 1000);
+      navigate('/profile');
+    } catch {
+      setErrors({ form: 'Unable to sign in. Please try again.' });
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -46,6 +53,9 @@ export default function Login() {
 
         <div className="bg-white rounded-lg border border-black/10 p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
+            {errors.form && (
+              <p className="text-red-600 text-sm">{errors.form}</p>
+            )}
             <div>
               <label htmlFor="email" className="block mb-2">
                 Email
@@ -82,12 +92,6 @@ export default function Login() {
               {errors.password && (
                 <p className="text-red-600 text-sm mt-1">{errors.password}</p>
               )}
-            </div>
-
-            <div className="text-right">
-              <a href="#" className="text-sm text-[#7A1F2A] hover:underline">
-                Forgot password?
-              </a>
             </div>
 
             <button

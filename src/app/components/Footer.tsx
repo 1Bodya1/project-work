@@ -1,5 +1,4 @@
 import { Link } from 'react-router';
-import { Instagram, Facebook, Twitter } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -48,36 +47,23 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/shipping" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  Shipping Info
+                <Link to="/orders" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  Orders
                 </Link>
               </li>
               <li>
-                <Link to="/returns" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  Returns
-                </Link>
-              </li>
-              <li>
-                <Link to="/faq" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  FAQ
+                <Link to="/profile" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  Profile
                 </Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <h4 className="mb-4">Follow Us</h4>
-            <div className="flex gap-4">
-              <a href="#" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                <Instagram className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                <Facebook className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                <Twitter className="w-5 h-5" />
-              </a>
-            </div>
+            <h4 className="mb-4">MVP</h4>
+            <p className="text-sm text-[#1A1A1A]">
+              Catalog, customization, checkout, tracking, support, and admin tools.
+            </p>
           </div>
         </div>
 

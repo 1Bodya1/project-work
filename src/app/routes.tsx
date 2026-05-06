@@ -11,7 +11,14 @@ import Profile from './pages/Profile';
 import Support from './pages/Support';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Orders from './pages/Orders';
 import OrderDetails from './pages/OrderDetails';
+import About from './pages/About';
+import PaymentPending from './pages/PaymentPending';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentFailed from './pages/PaymentFailed';
+import ProtectedRoute from './routes/ProtectedRoute';
+import AdminRoute from './routes/AdminRoute';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
@@ -27,23 +34,37 @@ export const router = createBrowserRouter([
       { path: 'product/:id', Component: ProductDetails },
       { path: 'customize/:id', Component: Customizer },
       { path: 'cart', Component: Cart },
-      { path: 'checkout', Component: Checkout },
-      { path: 'profile', Component: Profile },
-      { path: 'orders/:orderId', Component: OrderDetails },
       { path: 'support', Component: Support },
       { path: 'login', Component: Login },
       { path: 'register', Component: Register },
-      { path: 'about', Component: () => <div className="container mx-auto px-4 py-20 text-center"><h1 className="text-4xl mb-4">About Us</h1><p className="text-[#1A1A1A]">Learn more about Solution</p></div> },
+      { path: 'about', Component: About },
+      {
+        Component: ProtectedRoute,
+        children: [
+          { path: 'checkout', Component: Checkout },
+          { path: 'profile', Component: Profile },
+          { path: 'orders', Component: Orders },
+          { path: 'orders/:orderId', Component: OrderDetails },
+          { path: 'payment/pending', Component: PaymentPending },
+          { path: 'payment/success', Component: PaymentSuccess },
+          { path: 'payment/failed', Component: PaymentFailed },
+        ],
+      },
     ],
   },
   {
     path: '/admin',
-    Component: AdminLayout,
+    Component: AdminRoute,
     children: [
-      { index: true, Component: AdminDashboard },
-      { path: 'products', Component: AdminProducts },
-      { path: 'orders', Component: AdminOrders },
-      { path: 'support', Component: AdminSupportTickets },
+      {
+        Component: AdminLayout,
+        children: [
+          { index: true, Component: AdminDashboard },
+          { path: 'products', Component: AdminProducts },
+          { path: 'orders', Component: AdminOrders },
+          { path: 'support', Component: AdminSupportTickets },
+        ],
+      },
     ],
   },
 ]);

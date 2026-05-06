@@ -1,46 +1,121 @@
-import { Link } from 'react-router';
-import { StatusBadge } from '../components/StatusBadge';
-import { Package, User as UserIcon, LogOut, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { Check, Edit2, LogOut, Package, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { StatusBadge } from '../components/StatusBadge';
+import { orderService } from '../services/orderService';
+import { useAuth } from '../store/AuthContext';
+import type { Order, User } from '../types';
 
-export default function Profile() {
-  const orders = [
-    {
-      id: 'ORD-001',
-      date: '2026-04-28',
-      total: 1697,
-      status: 'delivered' as const,
-      paymentStatus: 'paid' as const,
-      trackingNumber: 'NP20269876543210',
-      items: [
-        {
-          name: 'Classic White T-Shirt',
-          quantity: 2,
-          image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=100&h=100&fit=crop',
-          customImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop',
-        },
-      ],
-    },
-    {
-      id: 'ORD-002',
-      date: '2026-05-02',
-      total: 899,
-      status: 'shipped' as const,
-      paymentStatus: 'paid' as const,
-      trackingNumber: 'NP20269876543211',
-      items: [
-        {
-          name: 'Premium Black Hoodie',
-          quantity: 1,
-          image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=100&h=100&fit=crop',
-          customImage: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=100&h=100&fit=crop',
-        },
-      ],
-    },
+type ProfileForm = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+};
+
+type BadgeStatus =
+  | 'pending'
+  | 'paid'
+  | 'production'
+  | 'shipped'
+  | 'delivered'
+  | 'new'
+  | 'in_progress'
+  | 'resolved';
+
+function getNameParts(user: User | null) {
+  const [firstName = '', ...lastNameParts] = (user?.name || '').split(' ').filter(Boolean);
+
+  return {
+    firstName: user?.firstName || firstName,
+    lastName: user?.lastName || lastNameParts.join(' '),
+  };
+}
+
+function toBadgeStatus(status?: string): BadgeStatus {
+  const supportedStatuses: BadgeStatus[] = [
+    'pending',
+    'paid',
+    'production',
+    'shipped',
+    'delivered',
+    'new',
+    'in_progress',
+    'resolved',
   ];
 
-  const handleSaveProfile = () => {
+  return supportedStatuses.includes(status as BadgeStatus) ? (status as BadgeStatus) : 'pending';
+}
+
+export default function Profile() {
+  const navigate = useNavigate();
+  const { user, logout, loadMe } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<ProfileForm>({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+  });
+
+  useEffect(() => {
+    const nameParts = getNameParts(user);
+    setFormData({
+      firstName: nameParts.firstName,
+      lastName: nameParts.lastName,
+      phone: user?.phone || '',
+      email: user?.email || '',
+    });
+  }, [user]);
+
+  useEffect(() => {
+    async function loadRecentOrders() {
+      try {
+        const nextOrders = await orderService.getMyOrders();
+        setOrders(nextOrders.slice(0, 2));
+      } finally {
+        setIsLoadingOrders(false);
+      }
+    }
+
+    loadRecentOrders();
+  }, []);
+
+  const displayName =
+    `${formData.firstName} ${formData.lastName}`.trim() || user?.name || 'Solution customer';
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    const updatedUser: User = {
+      ...user,
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      name: `${formData.firstName} ${formData.lastName}`.trim(),
+      phone: formData.phone.trim(),
+      email: user.email,
+    };
+
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    await loadMe();
+    setIsEditing(false);
     toast.success('Profile updated successfully!');
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    toast.success('Logged out successfully');
+    navigate('/');
+  };
+
+  const handleFieldChange = (field: keyof ProfileForm, value: string) => {
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      [field]: value,
+    }));
   };
 
   return (
@@ -55,8 +130,8 @@ export default function Profile() {
                 <UserIcon className="w-8 h-8 text-[#7A1F2A]" />
               </div>
               <div>
-                <h3 className="mb-1">John Doe</h3>
-                <p className="text-sm text-[#1A1A1A]">john@example.com</p>
+                <h3 className="mb-1">{displayName}</h3>
+                <p className="text-sm text-[#1A1A1A]">{formData.email}</p>
               </div>
             </div>
 
@@ -65,43 +140,65 @@ export default function Profile() {
                 <label className="block mb-2 text-sm">First Name</label>
                 <input
                   type="text"
-                  defaultValue="John"
-                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                  value={formData.firstName}
+                  disabled={!isEditing}
+                  onChange={(event) => handleFieldChange('firstName', event.target.value)}
+                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A] disabled:opacity-70"
                 />
               </div>
               <div>
                 <label className="block mb-2 text-sm">Last Name</label>
                 <input
                   type="text"
-                  defaultValue="Doe"
-                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                  value={formData.lastName}
+                  disabled={!isEditing}
+                  onChange={(event) => handleFieldChange('lastName', event.target.value)}
+                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A] disabled:opacity-70"
                 />
               </div>
               <div>
                 <label className="block mb-2 text-sm">Phone</label>
                 <input
                   type="tel"
-                  defaultValue="+380501234567"
-                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                  value={formData.phone}
+                  disabled={!isEditing}
+                  onChange={(event) => handleFieldChange('phone', event.target.value)}
+                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A] disabled:opacity-70"
                 />
               </div>
               <div>
                 <label className="block mb-2 text-sm">Email</label>
                 <input
                   type="email"
-                  defaultValue="john@example.com"
-                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                  value={formData.email}
+                  readOnly
+                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none opacity-70"
                 />
               </div>
 
               <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="w-full py-3 border border-black/10 rounded flex items-center justify-center gap-2 hover:bg-[#F5F5F5] transition-colors"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edit profile
+              </button>
+
+              <button
+                type="button"
                 onClick={handleSaveProfile}
-                className="w-full py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
+                disabled={!isEditing}
+                className="w-full py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Save changes
               </button>
 
-              <button className="w-full py-3 border border-black/10 rounded flex items-center justify-center gap-2 hover:bg-[#F5F5F5] transition-colors">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full py-3 border border-black/10 rounded flex items-center justify-center gap-2 hover:bg-[#F5F5F5] transition-colors"
+              >
                 <LogOut className="w-4 h-4" />
                 Logout
               </button>
@@ -111,9 +208,18 @@ export default function Profile() {
 
         <div className="lg:col-span-2">
           <div className="bg-white border border-black/10 rounded-lg p-6">
-            <h3 className="mb-6">Order History</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <h3>Recent Orders</h3>
+              <Link to="/orders" className="text-sm text-[#7A1F2A] hover:underline">
+                View all orders
+              </Link>
+            </div>
 
-            {orders.length === 0 ? (
+            {isLoadingOrders ? (
+              <div className="text-center py-12 text-[#1A1A1A]">
+                Loading profile orders...
+              </div>
+            ) : orders.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-4">
                   <Package className="w-8 h-8 text-[#1A1A1A]" />
@@ -123,7 +229,7 @@ export default function Profile() {
                   to="/catalog"
                   className="inline-block px-6 py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
                 >
-                  Start Shopping
+                  Go to catalog
                 </Link>
               </div>
             ) : (
@@ -137,36 +243,27 @@ export default function Profile() {
                       </div>
                       <div className="sm:text-right">
                         <p className="mb-2">₴{order.total}</p>
-                        <div className="flex gap-2">
-                          <StatusBadge status={order.paymentStatus} size="sm" />
-                          <StatusBadge status={order.status} size="sm" />
+                        <div className="flex gap-2 sm:justify-end">
+                          <StatusBadge status={toBadgeStatus(order.paymentStatus)} size="sm" />
+                          <StatusBadge status={toBadgeStatus(order.orderStatus || order.status)} size="sm" />
                         </div>
                       </div>
                     </div>
 
                     <div className="space-y-2 mb-4">
                       {order.items.map((item, index) => (
-                        <div key={index} className="flex items-center gap-3">
+                        <div key={`${order.id}-${item.productId || item.name}-${index}`} className="flex items-center gap-3">
                           <div className="w-16 h-16 bg-[#F5F5F5] rounded overflow-hidden relative">
                             <img
-                              src={item.image}
+                              src={item.customDesignImage || item.customImage || item.image}
                               alt={item.name}
                               className="w-full h-full object-cover"
                             />
-                            {item.customImage && (
-                              <div className="absolute inset-0 bg-white/90 flex items-center justify-center p-2">
-                                <img
-                                  src={item.customImage}
-                                  alt="Custom"
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                            )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm truncate">{item.name}</p>
                             <p className="text-xs text-[#1A1A1A]">Quantity: {item.quantity}</p>
-                            {item.customImage && (
+                            {(item.customImage || item.customDesignImage || item.hasCustomDesign) && (
                               <p className="text-xs text-green-600 flex items-center gap-1">
                                 <Check className="w-3 h-3" />
                                 Custom design
@@ -190,7 +287,7 @@ export default function Profile() {
                           rel="noopener noreferrer"
                           className="text-sm text-[#7A1F2A] hover:underline whitespace-nowrap"
                         >
-                          Track →
+                          Track
                         </a>
                       </div>
                     )}

@@ -1,0 +1,65 @@
+import type { Order } from '../types';
+
+export const mockOrders: Order[] = [
+  {
+    id: 'ORD-001',
+    date: '2026-04-28',
+    total: 1697,
+    status: 'delivered' as const,
+    paymentStatus: 'paid' as const,
+    trackingNumber: 'NP20269876543210',
+    customer: { name: 'John Doe', email: 'john@example.com', phone: '+380501234567' },
+    delivery: { provider: 'Nova Poshta', city: 'Kyiv', warehouse: 'Branch #1: Khreshchatyk St.' },
+    items: [
+      {
+        id: '1',
+        name: 'Classic White T-Shirt',
+        quantity: 2,
+        size: 'M',
+        color: 'White',
+        price: 399,
+        image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=100&h=100&fit=crop',
+        customImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop',
+      },
+    ],
+    timeline: [
+      { status: 'Order placed', date: '2026-04-28 10:30', completed: true },
+      { status: 'Payment confirmed', date: '2026-04-28 10:31', completed: true },
+      { status: 'In production', date: '2026-04-29 09:00', completed: true },
+      { status: 'Shipped', date: '2026-04-30 14:20', completed: true },
+      { status: 'Delivered', date: '2026-05-01 12:10', completed: true },
+    ],
+  },
+  {
+    id: 'ORD-002',
+    date: '2026-05-02',
+    total: 899,
+    status: 'shipped' as const,
+    paymentStatus: 'paid' as const,
+    trackingNumber: 'NP20269876543211',
+    customer: { name: 'John Doe', email: 'john@example.com', phone: '+380501234567' },
+    delivery: { provider: 'Nova Poshta', city: 'Kyiv', warehouse: 'Branch #1: Khreshchatyk St.' },
+    items: [
+      {
+        id: '2',
+        name: 'Premium Black Hoodie',
+        quantity: 1,
+        size: 'L',
+        color: 'Black',
+        price: 899,
+        image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=100&h=100&fit=crop',
+        customImage: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=100&h=100&fit=crop',
+      },
+    ],
+    timeline: [
+      { status: 'Order placed', date: '2026-05-02 10:30', completed: true },
+      { status: 'Payment confirmed', date: '2026-05-02 10:31', completed: true },
+      { status: 'In production', date: '2026-05-03 09:00', completed: true },
+      { status: 'Shipped', date: '2026-05-04 14:20', completed: true },
+      { status: 'Out for delivery', date: '', completed: false },
+      { status: 'Delivered', date: '', completed: false },
+    ],
+  },
+  { id: 'ORD-015', customer: { name: 'Anna Kovalenko', email: 'anna@example.com', phone: '+380501234567' }, date: '2026-05-04', total: 1299, paymentStatus: 'paid' as const, orderStatus: 'production' as const, trackingNumber: '', items: [{ name: 'Classic White T-Shirt', quantity: 2, size: 'M', color: 'White', hasCustomDesign: true, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=100&h=100&fit=crop', customDesignImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&h=200&fit=crop' }], delivery: { city: 'Kyiv', warehouse: 'Branch #1: Khreshchatyk St.' } },
+  { id: 'ORD-014', customer: { name: 'Dmytro Petrenko', email: 'dmytro@example.com', phone: '+380509876543' }, date: '2026-05-03', total: 899, paymentStatus: 'paid' as const, orderStatus: 'shipped' as const, trackingNumber: 'NP20269876543210', items: [{ name: 'Premium Black Hoodie', quantity: 1, size: 'L', color: 'Black', hasCustomDesign: true, image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=100&h=100&fit=crop', customDesignImage: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=200&h=200&fit=crop' }], delivery: { city: 'Lviv', warehouse: 'Branch #5: Svobody Ave.' } },
+];

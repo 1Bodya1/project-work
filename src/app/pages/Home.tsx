@@ -1,14 +1,10 @@
 import { Link } from 'react-router';
 import { ProductCard } from '../components/ProductCard';
 import { Upload, Paintbrush, ShoppingBag, Truck } from 'lucide-react';
+import { mockProducts } from '../mocks/mockProducts';
 
 export default function Home() {
-  const featuredProducts = [
-    { id: '1', name: 'Classic White T-Shirt', price: 399, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&h=500&fit=crop', colors: ['#FFFFFF', '#000000', '#7A1F2A'] },
-    { id: '2', name: 'Premium Black Hoodie', price: 899, image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500&h=500&fit=crop', colors: ['#000000', '#1A1A1A', '#FFFFFF'] },
-    { id: '3', name: 'Comfort Sweatshirt', price: 699, image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=500&h=500&fit=crop', colors: ['#F5F5F5', '#7A1F2A', '#000000'] },
-    { id: '4', name: 'Cotton Oversized Tee', price: 449, image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=500&h=500&fit=crop', colors: ['#FFFFFF', '#F5F5F5', '#1A1A1A'] },
-  ];
+  const featuredProducts = mockProducts.slice(0, 4);
 
   return (
     <div>
@@ -18,7 +14,7 @@ export default function Home() {
             Create clothing with your own design
           </h1>
           <p className="text-xl text-[#1A1A1A] mb-8 max-w-2xl">
-            Choose your favorite clothing item, upload your unique design, and create something truly yours. Fast delivery across Ukraine.
+            Choose a clothing item, upload your unique design, and create something truly yours. Fast delivery across Ukraine.
           </p>
           <Link
             to="/catalog"

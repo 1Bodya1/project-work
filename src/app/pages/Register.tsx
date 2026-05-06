@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { useAuth } from '../store/AuthContext';
 
 export default function Register() {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -42,11 +44,21 @@ export default function Register() {
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        name: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone,
+      });
       setIsLoading(false);
-      navigate('/');
-    }, 1000);
+      navigate('/profile');
+    } catch {
+      setErrors({ form: 'Unable to create account. Please try again.' });
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,6 +74,9 @@ export default function Register() {
 
         <div className="bg-white rounded-lg border border-black/10 p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {errors.form && (
+              <p className="text-red-600 text-sm">{errors.form}</p>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="firstName" className="block mb-2">

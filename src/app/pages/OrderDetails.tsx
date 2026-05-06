@@ -1,57 +1,108 @@
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
-import { ArrowLeft, Package, Truck, Check } from 'lucide-react';
+import { ArrowLeft, Check, Package, RefreshCw, Truck } from 'lucide-react';
+import { toast } from 'sonner';
 import { StatusBadge } from '../components/StatusBadge';
+import { deliveryService, mockDeliveryStatuses } from '../services/deliveryService';
+import { orderService } from '../services/orderService';
+import type { Order, OrderTimelineStep } from '../types';
+
+function getOrderStatus(order: Order) {
+  return order.orderStatus || order.status || 'pending';
+}
+
+function buildDeliveryTimeline(order: Order): OrderTimelineStep[] {
+  if (order.timeline?.length) return order.timeline;
+
+  const deliveryStatus = order.deliveryStatus || order.delivery?.status || 'Created';
+  const activeStatusIndex = Math.max(mockDeliveryStatuses.indexOf(deliveryStatus), 0);
+
+  return mockDeliveryStatuses.map((status, index) => ({
+    status,
+    date: index === 0 ? order.date : '',
+    completed: index <= activeStatusIndex,
+  }));
+}
 
 export default function OrderDetails() {
   const { orderId } = useParams();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshingDelivery, setIsRefreshingDelivery] = useState(false);
 
-  const order = {
-    id: orderId || 'ORD-001',
-    date: '2026-05-02',
-    status: 'shipped' as const,
-    paymentStatus: 'paid' as const,
-    trackingNumber: 'NP20269876543210',
-    customer: {
-      firstName: 'John',
-      lastName: 'Doe',
-      email: 'john@example.com',
-      phone: '+380501234567',
-    },
-    delivery: {
-      provider: 'Nova Poshta',
-      city: 'Kyiv',
-      warehouse: 'Branch #1: Khreshchatyk St.',
-    },
-    items: [
-      {
-        id: '1',
-        name: 'Classic White T-Shirt',
-        image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200&h=200&fit=crop',
-        customImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&h=200&fit=crop',
-        size: 'M',
-        color: 'White',
-        quantity: 2,
-        price: 399,
-      },
-    ],
-    timeline: [
-      { status: 'Order placed', date: '2026-05-02 10:30', completed: true },
-      { status: 'Payment confirmed', date: '2026-05-02 10:31', completed: true },
-      { status: 'In production', date: '2026-05-03 09:00', completed: true },
-      { status: 'Shipped', date: '2026-05-04 14:20', completed: true },
-      { status: 'Out for delivery', date: '', completed: false },
-      { status: 'Delivered', date: '', completed: false },
-    ],
+  useEffect(() => {
+    async function loadOrder() {
+      if (!orderId) {
+        setIsLoading(false);
+        return;
+      }
+
+      const nextOrder = await orderService.getOrderById(orderId);
+      setOrder(nextOrder);
+      setIsLoading(false);
+    }
+
+    loadOrder();
+  }, [orderId]);
+
+  async function handleRefreshDeliveryStatus() {
+    if (!order?.trackingNumber) return;
+
+    setIsRefreshingDelivery(true);
+    try {
+      const delivery = await deliveryService.getDeliveryStatus(order.trackingNumber);
+      setOrder({
+        ...order,
+        deliveryStatus: delivery.status,
+        delivery: order.delivery ? { ...order.delivery, status: delivery.status } : order.delivery,
+        timeline: mockDeliveryStatuses.map((status, index) => ({
+          status,
+          date: index === 0 ? order.date : '',
+          completed: index <= Math.max(mockDeliveryStatuses.indexOf(delivery.status), 0),
+        })),
+      });
+    } catch {
+      toast.error('Unable to refresh delivery status');
+    } finally {
+      setIsRefreshingDelivery(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <p className="text-[#1A1A1A]">Loading order...</p>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <h1 className="text-3xl mb-4">Order not found</h1>
+        <Link to="/orders" className="text-[#7A1F2A] hover:underline">
+          Back to orders
+        </Link>
+      </div>
+    );
+  }
+
+  const customerName = order.customer?.name || 'Customer';
+  const delivery = order.delivery || {
+    provider: 'Nova Poshta',
+    city: 'Kyiv',
+    warehouse: 'Branch #1: Khreshchatyk St.',
   };
-
-  const subtotal = order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const orderStatus = getOrderStatus(order);
+  const timeline = buildDeliveryTimeline(order);
+  const subtotal = order.items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
   const shipping = subtotal > 1000 ? 0 : 50;
-  const total = subtotal + shipping;
+  const total = order.total || subtotal + shipping;
 
   return (
     <div className="container mx-auto px-4 py-8">
       <Link
-        to="/profile"
+        to="/orders"
         className="inline-flex items-center gap-2 text-[#7A1F2A] hover:underline mb-6"
       >
         <ArrowLeft className="w-4 h-4" />
@@ -66,7 +117,7 @@ export default function OrderDetails() {
           </div>
           <div className="flex gap-2">
             <StatusBadge status={order.paymentStatus} />
-            <StatusBadge status={order.status} />
+            <StatusBadge status={orderStatus} />
           </div>
         </div>
       </div>
@@ -74,66 +125,45 @@ export default function OrderDetails() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white border border-black/10 rounded-lg p-6">
-            <h3 className="mb-6">Order Items</h3>
+            <h3 className="mb-6">Products</h3>
             <div className="space-y-4">
-              {order.items.map((item) => (
-                <div key={item.id} className="flex gap-4 pb-4 border-b border-black/10 last:border-0">
-                  <div className="w-24 h-24 bg-[#F5F5F5] rounded overflow-hidden relative flex-shrink-0">
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="mb-1">{item.name}</h4>
-                    <p className="text-sm text-[#1A1A1A] mb-2">
-                      Size: {item.size} • Color: {item.color}
-                    </p>
-                    <p className="text-sm text-green-600 mb-2 flex items-center gap-1">
-                      <Check className="w-4 h-4" />
-                      Custom design applied
-                    </p>
-                    <p className="text-sm text-[#1A1A1A]">
-                      Quantity: {item.quantity} × ₴{item.price}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg">₴{item.price * item.quantity}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+              {order.items.map((item, index) => {
+                const customPreview = item.customImage || item.customDesignImage;
 
-            {order.items[0]?.customImage && (
-              <div className="mt-6 pt-6 border-t border-black/10">
-                <h4 className="mb-4">Custom Design Preview</h4>
-                <div className="flex gap-4 items-start">
-                  <div className="w-48 h-48 bg-[#F5F5F5] rounded overflow-hidden">
-                    <img
-                      src={order.items[0].customImage}
-                      alt="Custom design"
-                      className="w-full h-full object-contain p-4"
-                    />
+                return (
+                  <div key={`${item.name}-${index}`} className="flex gap-4 pb-4 border-b border-black/10 last:border-0">
+                    <div className="w-24 h-24 bg-[#F5F5F5] rounded overflow-hidden relative flex-shrink-0">
+                      <img src={customPreview || item.image} alt={item.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="mb-1">{item.name}</h4>
+                      <p className="text-sm text-[#1A1A1A] mb-2">
+                        Size: {item.size || '-'} • Color: {item.color || '-'}
+                      </p>
+                      {customPreview && (
+                        <p className="text-sm text-green-600 mb-2 flex items-center gap-1">
+                          <Check className="w-4 h-4" />
+                          Custom design applied
+                        </p>
+                      )}
+                      <p className="text-sm text-[#1A1A1A]">
+                        Quantity: {item.quantity} x ₴{item.price || 0}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg">₴{(item.price || 0) * item.quantity}</p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-[#1A1A1A] mb-2">
-                      Your uploaded design will be printed on the product
-                    </p>
-                    <p className="text-sm text-[#1A1A1A]">
-                      Production time: 3-5 business days
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
 
           <div className="bg-white border border-black/10 rounded-lg p-6">
-            <h3 className="mb-6">Delivery Timeline</h3>
+            <h3 className="mb-6">Delivery Status Timeline</h3>
             <div className="space-y-4">
-              {order.timeline.map((step, index) => (
-                <div key={index} className="flex gap-4">
+              {timeline.map((step, index) => (
+                <div key={`${step.status}-${index}`} className="flex gap-4">
                   <div className="flex flex-col items-center">
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -142,21 +172,13 @@ export default function OrderDetails() {
                     >
                       {step.completed ? <Check className="w-5 h-5" /> : index + 1}
                     </div>
-                    {index < order.timeline.length - 1 && (
-                      <div
-                        className={`w-0.5 h-12 ${
-                          step.completed ? 'bg-[#7A1F2A]' : 'bg-[#F5F5F5]'
-                        }`}
-                      />
+                    {index < timeline.length - 1 && (
+                      <div className={`w-0.5 h-12 ${step.completed ? 'bg-[#7A1F2A]' : 'bg-[#F5F5F5]'}`} />
                     )}
                   </div>
                   <div className="flex-1 pb-8">
-                    <p className={step.completed ? 'text-[#7A1F2A]' : 'text-[#1A1A1A]'}>
-                      {step.status}
-                    </p>
-                    {step.date && (
-                      <p className="text-sm text-[#1A1A1A]">{step.date}</p>
-                    )}
+                    <p className={step.completed ? 'text-[#7A1F2A]' : 'text-[#1A1A1A]'}>{step.status}</p>
+                    {step.date && <p className="text-sm text-[#1A1A1A]">{step.date}</p>}
                   </div>
                 </div>
               ))}
@@ -170,15 +192,29 @@ export default function OrderDetails() {
             <div className="space-y-3 text-sm">
               <div>
                 <p className="text-[#1A1A1A] mb-1">Name</p>
-                <p>{order.customer.firstName} {order.customer.lastName}</p>
+                <p>{customerName}</p>
               </div>
               <div>
                 <p className="text-[#1A1A1A] mb-1">Email</p>
-                <p>{order.customer.email}</p>
+                <p>{order.customer?.email || '-'}</p>
               </div>
               <div>
                 <p className="text-[#1A1A1A] mb-1">Phone</p>
-                <p>{order.customer.phone}</p>
+                <p>{order.customer?.phone || '-'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-black/10 rounded-lg p-6">
+            <h3 className="mb-4">Payment</h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-[#1A1A1A] mb-1">Provider</p>
+                <p>{order.paymentProvider || 'Monobank'}</p>
+              </div>
+              <div>
+                <p className="text-[#1A1A1A] mb-1">Status</p>
+                <StatusBadge status={order.paymentStatus} size="sm" />
               </div>
             </div>
           </div>
@@ -190,31 +226,38 @@ export default function OrderDetails() {
                 <p className="text-[#1A1A1A] mb-1">Provider</p>
                 <p className="flex items-center gap-2">
                   <Truck className="w-4 h-4 text-[#7A1F2A]" />
-                  {order.delivery.provider}
+                  {delivery.provider || 'Nova Poshta'}
                 </p>
               </div>
               <div>
                 <p className="text-[#1A1A1A] mb-1">Delivery Address</p>
-                <p>{order.delivery.city}</p>
-                <p>{order.delivery.warehouse}</p>
+                <p>{delivery.city}</p>
+                <p>{delivery.warehouse}</p>
               </div>
-              {order.trackingNumber && (
-                <div>
-                  <p className="text-[#1A1A1A] mb-1">Tracking Number</p>
+              <div>
+                <p className="text-[#1A1A1A] mb-1">Delivery Status</p>
+                <p>{order.deliveryStatus || delivery.status || 'Created'}</p>
+              </div>
+              <div>
+                <p className="text-[#1A1A1A] mb-1">Tracking Number</p>
+                {order.trackingNumber ? (
                   <p className="flex items-center gap-2">
                     <Package className="w-4 h-4 text-[#7A1F2A]" />
                     {order.trackingNumber}
                   </p>
-                  <a
-                    href={`https://novaposhta.ua/tracking/?cargo_number=${order.trackingNumber}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#7A1F2A] hover:underline text-sm mt-2 inline-block"
-                  >
-                    Track on Nova Poshta →
-                  </a>
-                </div>
-              )}
+                ) : (
+                  <p>Tracking number has not been added yet</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleRefreshDeliveryStatus}
+                disabled={!order.trackingNumber || isRefreshingDelivery}
+                className="w-full py-2.5 border border-black/10 rounded hover:bg-[#F5F5F5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshingDelivery ? 'animate-spin' : ''}`} />
+                Refresh delivery status
+              </button>
             </div>
           </div>
 

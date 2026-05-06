@@ -1,87 +1,159 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
+import { Clock, CreditCard, DollarSign, Eye, MessageSquare, Package, Truck } from 'lucide-react';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Package, DollarSign, Clock, MessageSquare } from 'lucide-react';
+import { adminService } from '../../services/adminService';
+import type { Order, SupportTicket } from '../../types';
+
+type BadgeStatus =
+  | 'pending'
+  | 'paid'
+  | 'production'
+  | 'shipped'
+  | 'delivered'
+  | 'new'
+  | 'in_progress'
+  | 'resolved';
+
+function toBadgeStatus(status?: string): BadgeStatus {
+  const supportedStatuses: BadgeStatus[] = [
+    'pending',
+    'paid',
+    'production',
+    'shipped',
+    'delivered',
+    'new',
+    'in_progress',
+    'resolved',
+  ];
+
+  return supportedStatuses.includes(status as BadgeStatus) ? (status as BadgeStatus) : 'pending';
+}
+
+function getOrderStatus(order: Order) {
+  return order.orderStatus || order.status || 'pending';
+}
+
+function getCustomerName(order: Order) {
+  return order.customer?.name || 'Customer';
+}
 
 export default function AdminDashboard() {
-  const recentOrders = [
-    { id: 'ORD-015', customer: 'Anna Kovalenko', total: 1299, status: 'paid' as const, date: '2026-05-04' },
-    { id: 'ORD-014', customer: 'Dmytro Petrenko', total: 899, status: 'production' as const, date: '2026-05-03' },
-    { id: 'ORD-013', customer: 'Olena Shevchenko', total: 1697, status: 'shipped' as const, date: '2026-05-02' },
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      const [nextOrders, nextSupportTickets] = await Promise.all([
+        adminService.getOrders(),
+        adminService.getSupportTickets(),
+      ]);
+
+      setOrders(nextOrders);
+      setSupportTickets(nextSupportTickets);
+      setIsLoading(false);
+    }
+
+    loadDashboardData();
+  }, []);
+
+  const stats = useMemo(() => {
+    const paidOrders = orders.filter((order) => order.paymentStatus === 'paid');
+
+    return {
+      totalOrders: orders.length,
+      paidOrders: paidOrders.length,
+      inProduction: orders.filter((order) => getOrderStatus(order) === 'production').length,
+      shippedOrders: orders.filter((order) => getOrderStatus(order) === 'shipped').length,
+      supportRequests: supportTickets.length,
+      totalRevenue: paidOrders.reduce((sum, order) => sum + order.total, 0),
+    };
+  }, [orders, supportTickets]);
+
+  const recentOrders = useMemo(
+    () => [...orders].sort((firstOrder, secondOrder) => secondOrder.date.localeCompare(firstOrder.date)).slice(0, 5),
+    [orders],
+  );
+
+  const statCards = [
+    { label: 'Total Orders', value: stats.totalOrders, icon: Package },
+    { label: 'Paid Orders', value: stats.paidOrders, icon: CreditCard },
+    { label: 'In Production', value: stats.inProduction, icon: Clock },
+    { label: 'Shipped Orders', value: stats.shippedOrders, icon: Truck },
+    { label: 'Support Requests', value: stats.supportRequests, icon: MessageSquare },
+    { label: 'Total Revenue', value: `₴${stats.totalRevenue}`, icon: DollarSign },
   ];
+
+  if (isLoading) {
+    return (
+      <div>
+        <h1 className="text-4xl mb-8">Dashboard</h1>
+        <div className="bg-white border border-black/10 rounded-lg p-8 text-center text-[#1A1A1A]">
+          Loading dashboard...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <h1 className="text-4xl mb-8">Dashboard</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white border border-black/10 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-[#F5F5F5] rounded-full flex items-center justify-center">
-              <Package className="w-6 h-6 text-[#7A1F2A]" />
-            </div>
-            <span className="text-2xl">127</span>
-          </div>
-          <h3 className="text-sm text-[#1A1A1A]">Total Orders</h3>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+        {statCards.map((card) => {
+          const Icon = card.icon;
 
-        <div className="bg-white border border-black/10 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-[#F5F5F5] rounded-full flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-[#7A1F2A]" />
+          return (
+            <div key={card.label} className="bg-white border border-black/10 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4 gap-4">
+                <div className="w-12 h-12 bg-[#F5F5F5] rounded-full flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-6 h-6 text-[#7A1F2A]" />
+                </div>
+                <span className="text-2xl text-right">{card.value}</span>
+              </div>
+              <h3 className="text-sm text-[#1A1A1A]">{card.label}</h3>
             </div>
-            <span className="text-2xl">98</span>
-          </div>
-          <h3 className="text-sm text-[#1A1A1A]">Paid Orders</h3>
-        </div>
-
-        <div className="bg-white border border-black/10 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-[#F5F5F5] rounded-full flex items-center justify-center">
-              <Clock className="w-6 h-6 text-[#7A1F2A]" />
-            </div>
-            <span className="text-2xl">15</span>
-          </div>
-          <h3 className="text-sm text-[#1A1A1A]">In Production</h3>
-        </div>
-
-        <div className="bg-white border border-black/10 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-[#F5F5F5] rounded-full flex items-center justify-center">
-              <MessageSquare className="w-6 h-6 text-[#7A1F2A]" />
-            </div>
-            <span className="text-2xl">8</span>
-          </div>
-          <h3 className="text-sm text-[#1A1A1A]">Support Requests</h3>
-        </div>
+          );
+        })}
       </div>
 
       <div className="bg-white border border-black/10 rounded-lg p-6">
         <h3 className="mb-6">Recent Orders</h3>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-black/10">
-                <th className="text-left pb-3 text-sm">Order ID</th>
+                <th className="text-left pb-3 text-sm">Order Number</th>
                 <th className="text-left pb-3 text-sm">Customer</th>
-                <th className="text-left pb-3 text-sm">Date</th>
                 <th className="text-left pb-3 text-sm">Total</th>
-                <th className="text-left pb-3 text-sm">Status</th>
-                <th className="text-left pb-3 text-sm">Actions</th>
+                <th className="text-left pb-3 text-sm">Payment</th>
+                <th className="text-left pb-3 text-sm">Order Status</th>
+                <th className="text-left pb-3 text-sm">Date</th>
+                <th className="text-left pb-3 text-sm">Action</th>
               </tr>
             </thead>
             <tbody>
               {recentOrders.map((order) => (
                 <tr key={order.id} className="border-b border-black/10">
                   <td className="py-4">{order.id}</td>
-                  <td className="py-4">{order.customer}</td>
-                  <td className="py-4 text-[#1A1A1A]">{order.date}</td>
+                  <td className="py-4">{getCustomerName(order)}</td>
                   <td className="py-4">₴{order.total}</td>
                   <td className="py-4">
-                    <StatusBadge status={order.status} size="sm" />
+                    <StatusBadge status={toBadgeStatus(order.paymentStatus)} size="sm" />
                   </td>
                   <td className="py-4">
-                    <button className="text-sm text-[#7A1F2A] hover:underline">
-                      View details
-                    </button>
+                    <StatusBadge status={toBadgeStatus(getOrderStatus(order))} size="sm" />
+                  </td>
+                  <td className="py-4 text-[#1A1A1A]">{order.date}</td>
+                  <td className="py-4">
+                    <Link
+                      to="/admin/orders"
+                      className="inline-flex items-center gap-1 text-sm text-[#7A1F2A] hover:underline"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View
+                    </Link>
                   </td>
                 </tr>
               ))}

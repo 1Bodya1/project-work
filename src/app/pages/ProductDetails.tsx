@@ -1,25 +1,134 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { Minus, Plus } from 'lucide-react';
+import { toast } from 'sonner';
+import { productService } from '../services/productService';
+import { useCart } from '../store/CartContext';
+import type { Product } from '../types';
 
 export default function ProductDetails() {
-  const { id } = useParams();
-  const [selectedColor, setSelectedColor] = useState('#FFFFFF');
-  const [selectedSize, setSelectedSize] = useState('M');
+  const { id, productId } = useParams();
+  const resolvedProductId = productId || id;
+  const [product, setProduct] = useState<Product | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingError, setLoadingError] = useState('');
+  const [selectedImage, setSelectedImage] = useState('');
+  const [selectedColor, setSelectedColor] = useState('');
+  const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [errorMessage, setErrorMessage] = useState('');
+  const { addItem } = useCart();
 
-  const product = {
-    name: 'Classic White T-Shirt',
-    price: 399,
-    description: 'Premium quality cotton t-shirt perfect for customization. Made from 100% organic cotton with a comfortable fit.',
-    image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800&h=800&fit=crop',
-    colors: [
-      { name: 'White', value: '#FFFFFF' },
-      { name: 'Black', value: '#000000' },
-      { name: 'Burgundy', value: '#7A1F2A' },
-    ],
-    sizes: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
-  };
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProduct() {
+      if (!resolvedProductId) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setLoadingError('');
+
+      try {
+        const nextProduct = await productService.getProductById(resolvedProductId);
+
+        if (isMounted) {
+          setProduct(nextProduct);
+          setSelectedImage(nextProduct?.images?.[0] || nextProduct?.image || '');
+          setSelectedColor('');
+          setSelectedSize('');
+          setQuantity(1);
+          setErrorMessage('');
+        }
+      } catch {
+        if (isMounted) {
+          setProduct(null);
+          setLoadingError('Unable to load product. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadProduct();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resolvedProductId]);
+
+  async function handleAddToCart() {
+    if (!product) return;
+
+    if (!selectedColor) {
+      const message = 'Please select a color before adding this product to cart.';
+      setErrorMessage(message);
+      toast.error(message);
+      return;
+    }
+
+    if (!selectedSize) {
+      const message = 'Please select a size before adding this product to cart.';
+      setErrorMessage(message);
+      toast.error(message);
+      return;
+    }
+
+    await addItem({
+      productId: product.id,
+      title: product.name,
+      name: product.name,
+      image: product.image,
+      previewUrl: product.image,
+      size: selectedSize,
+      color: selectedColor,
+      quantity,
+      price: product.price,
+      isCustomized: false,
+      hasCustomDesign: false,
+    });
+
+    setErrorMessage('');
+    toast.success('Product added to cart');
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <p className="text-[#1A1A1A]">Loading product...</p>
+      </div>
+    );
+  }
+
+  if (loadingError) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <h1 className="text-3xl mb-4">Product loading error</h1>
+        <p className="text-[#1A1A1A] mb-6">{loadingError}</p>
+        <Link to="/catalog" className="text-[#7A1F2A] hover:underline">
+          Back to catalog
+        </Link>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <h1 className="text-3xl mb-4">Product not found</h1>
+        <Link to="/catalog" className="text-[#7A1F2A] hover:underline">
+          Back to catalog
+        </Link>
+      </div>
+    );
+  }
+
+  const productImages = product.images?.length ? product.images : [product.image];
+  const canCustomize = product.isCustomizable ?? product.customizable;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -27,40 +136,50 @@ export default function ProductDetails() {
         <div>
           <div className="aspect-square bg-[#F5F5F5] rounded overflow-hidden mb-4">
             <img
-              src={product.image}
+              src={selectedImage || product.image}
               alt={product.name}
               className="w-full h-full object-cover"
             />
           </div>
           <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="aspect-square bg-[#F5F5F5] rounded overflow-hidden cursor-pointer hover:opacity-75 transition-opacity">
+            {productImages.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                onClick={() => setSelectedImage(image)}
+                className={`aspect-square bg-[#F5F5F5] rounded overflow-hidden cursor-pointer hover:opacity-75 transition-opacity ${
+                  selectedImage === image ? 'ring-2 ring-[#7A1F2A]' : ''
+                }`}
+              >
                 <img
-                  src={product.image}
-                  alt={`View ${i}`}
+                  src={image}
+                  alt={`${product.name} view ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
-              </div>
+              </button>
             ))}
           </div>
         </div>
 
         <div>
           <h1 className="text-4xl mb-2">{product.name}</h1>
+          {product.category && <p className="text-[#1A1A1A] mb-2">{product.category}</p>}
           <p className="text-2xl mb-6">₴{product.price}</p>
 
           <div className="mb-6">
             <h3 className="mb-3">Color</h3>
-            <div className="flex gap-3">
-              {product.colors.map((color) => (
+            <div className="flex gap-3 flex-wrap">
+              {(product.colors || []).map((color) => (
                 <button
-                  key={color.value}
-                  onClick={() => setSelectedColor(color.value)}
+                  key={color}
+                  onClick={() => {
+                    setSelectedColor(color);
+                    setErrorMessage('');
+                  }}
                   className={`w-10 h-10 rounded-full border-2 transition-all ${
-                    selectedColor === color.value ? 'border-[#7A1F2A] scale-110' : 'border-black/10'
+                    selectedColor === color ? 'border-[#7A1F2A] scale-110' : 'border-black/10'
                   }`}
-                  style={{ backgroundColor: color.value }}
-                  title={color.name}
+                  style={{ backgroundColor: color }}
+                  title={color}
                 />
               ))}
             </div>
@@ -68,11 +187,14 @@ export default function ProductDetails() {
 
           <div className="mb-6">
             <h3 className="mb-3">Size</h3>
-            <div className="flex gap-2">
-              {product.sizes.map((size) => (
+            <div className="flex gap-2 flex-wrap">
+              {(product.sizes || []).map((size) => (
                 <button
                   key={size}
-                  onClick={() => setSelectedSize(size)}
+                  onClick={() => {
+                    setSelectedSize(size);
+                    setErrorMessage('');
+                  }}
                   className={`px-6 py-3 border rounded transition-colors ${
                     selectedSize === size
                       ? 'bg-black text-white border-black'
@@ -105,15 +227,21 @@ export default function ProductDetails() {
           </div>
 
           <div className="space-y-3 mb-8">
-            <Link
-              to={`/customize/${id}`}
-              className="block w-full py-4 bg-[#7A1F2A] text-white text-center rounded hover:bg-[#5A1520] transition-colors"
+            {canCustomize && (
+              <Link
+                to={`/customize/${product.id}`}
+                className="block w-full py-4 bg-[#7A1F2A] text-white text-center rounded hover:bg-[#5A1520] transition-colors"
+              >
+                Customize this product
+              </Link>
+            )}
+            <button
+              onClick={handleAddToCart}
+              className="w-full py-4 border border-black rounded hover:bg-black hover:text-white transition-colors"
             >
-              Customize this product
-            </Link>
-            <button className="w-full py-4 border border-black rounded hover:bg-black hover:text-white transition-colors">
               Add to cart
             </button>
+            {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
           </div>
 
           <div className="border-t border-black/10 pt-6">

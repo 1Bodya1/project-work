@@ -1,41 +1,68 @@
-import { useState } from 'react';
-import { StatusBadge } from '../../components/StatusBadge';
+import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { StatusBadge } from '../../components/StatusBadge';
+import { adminService } from '../../services/adminService';
+import type { SupportTicket, TicketStatus } from '../../types';
+
+const ticketStatusOptions: Array<{ value: TicketStatus; label: string }> = [
+  { value: 'new', label: 'New' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'resolved', label: 'Resolved' },
+];
 
 export default function AdminSupportTickets() {
-  const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [draftStatus, setDraftStatus] = useState<TicketStatus>('new');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const tickets = [
-    {
-      id: 'SUP-008',
-      subject: 'Issue with custom design upload',
-      orderNumber: 'ORD-012',
-      customer: { name: 'Olena Bondar', email: 'olena@example.com' },
-      date: '2026-05-04',
-      status: 'new' as const,
-      message: 'Hello, I am trying to upload my design but it keeps showing an error. Can you help?',
-    },
-    {
-      id: 'SUP-007',
-      subject: 'Delivery delay inquiry',
-      orderNumber: 'ORD-008',
-      customer: { name: 'Petro Symonenko', email: 'petro@example.com' },
-      date: '2026-05-03',
-      status: 'in_progress' as const,
-      message: 'My order was supposed to arrive yesterday but I still haven\'t received it. Please check the status.',
-    },
-    {
-      id: 'SUP-006',
-      subject: 'Size exchange request',
-      orderNumber: 'ORD-005',
-      customer: { name: 'Iryna Moroz', email: 'iryna@example.com' },
-      date: '2026-05-01',
-      status: 'resolved' as const,
-      message: 'I would like to exchange my order for a different size. The current one is too small.',
-    },
-  ];
+  useEffect(() => {
+    loadTickets();
+  }, []);
 
-  const ticket = tickets.find((t) => t.id === selectedTicket);
+  async function loadTickets() {
+    const nextTickets = await adminService.getSupportTickets();
+    setTickets(nextTickets);
+    setSelectedTicketId((currentSelectedTicketId) => currentSelectedTicketId || nextTickets[0]?.id || null);
+    setIsLoading(false);
+  }
+
+  const selectedTicket = useMemo(
+    () => tickets.find((ticket) => ticket.id === selectedTicketId) || null,
+    [tickets, selectedTicketId],
+  );
+
+  useEffect(() => {
+    if (!selectedTicket) return;
+    setDraftStatus(selectedTicket.status);
+  }, [selectedTicket]);
+
+  async function handleUpdateStatus() {
+    if (!selectedTicket) return;
+
+    const updatedTicket = await adminService.updateSupportTicketStatus(selectedTicket.id, draftStatus);
+    if (!updatedTicket) {
+      toast.error('Unable to update support ticket');
+      return;
+    }
+
+    setTickets((currentTickets) =>
+      currentTickets.map((ticket) => (ticket.id === updatedTicket.id ? updatedTicket : ticket)),
+    );
+    toast.success('Support ticket updated successfully');
+  }
+
+  if (isLoading) {
+    return (
+      <div>
+        <h1 className="text-4xl mb-8">Support Tickets</h1>
+        <div className="bg-white border border-black/10 rounded-lg p-8 text-center text-[#1A1A1A]">
+          Loading support tickets...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -46,34 +73,49 @@ export default function AdminSupportTickets() {
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">All Tickets</h3>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[860px]">
                 <thead>
                   <tr className="border-b border-black/10">
-                    <th className="text-left pb-3 text-sm">Ticket ID</th>
+                    <th className="text-left pb-3 text-sm">Ticket Number</th>
+                    <th className="text-left pb-3 text-sm">User</th>
+                    <th className="text-left pb-3 text-sm">Order Number</th>
                     <th className="text-left pb-3 text-sm">Subject</th>
-                    <th className="text-left pb-3 text-sm">Customer</th>
                     <th className="text-left pb-3 text-sm">Date</th>
                     <th className="text-left pb-3 text-sm">Status</th>
-                    <th className="text-left pb-3 text-sm"></th>
+                    <th className="text-left pb-3 text-sm">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.map((t) => (
+                  {tickets.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-[#1A1A1A]">
+                        No support tickets
+                      </td>
+                    </tr>
+                  ) : tickets.map((ticket) => (
                     <tr
-                      key={t.id}
-                      className={`border-b border-black/10 cursor-pointer hover:bg-[#F5F5F5] ${selectedTicket === t.id ? 'bg-[#F5F5F5]' : ''}`}
-                      onClick={() => setSelectedTicket(t.id)}
+                      key={ticket.id}
+                      className={`border-b border-black/10 cursor-pointer hover:bg-[#F5F5F5] ${
+                        selectedTicketId === ticket.id ? 'bg-[#F5F5F5]' : ''
+                      }`}
+                      onClick={() => setSelectedTicketId(ticket.id)}
                     >
-                      <td className="py-4">{t.id}</td>
-                      <td className="py-4">{t.subject}</td>
-                      <td className="py-4 text-[#1A1A1A]">{t.customer.name}</td>
-                      <td className="py-4 text-[#1A1A1A]">{t.date}</td>
+                      <td className="py-4">{ticket.id}</td>
+                      <td className="py-4 text-[#1A1A1A]">{ticket.customer.name}</td>
+                      <td className="py-4 text-[#1A1A1A]">{ticket.orderNumber || '-'}</td>
+                      <td className="py-4">{ticket.subject}</td>
+                      <td className="py-4 text-[#1A1A1A]">{ticket.date}</td>
                       <td className="py-4">
-                        <StatusBadge status={t.status} size="sm" />
+                        <StatusBadge status={ticket.status} size="sm" />
                       </td>
                       <td className="py-4">
-                        <button className="p-2 hover:bg-white rounded">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTicketId(ticket.id)}
+                          className="inline-flex items-center gap-1 text-sm text-[#7A1F2A] hover:underline"
+                        >
                           <Eye className="w-4 h-4" />
+                          View
                         </button>
                       </td>
                     </tr>
@@ -85,64 +127,62 @@ export default function AdminSupportTickets() {
         </div>
 
         <div>
-          {ticket ? (
-            <div className="bg-white border border-black/10 rounded-lg p-6 sticky top-24">
+          {selectedTicket ? (
+            <div className="bg-white border border-black/10 rounded-lg p-6 sticky top-24 max-h-[calc(100vh-6rem)] overflow-y-auto">
               <h3 className="mb-6">Ticket Details</h3>
 
               <div className="space-y-4 mb-6">
                 <div>
-                  <p className="text-sm text-[#1A1A1A] mb-1">Ticket ID</p>
-                  <p>{ticket.id}</p>
+                  <p className="text-sm text-[#1A1A1A] mb-1">Ticket Number</p>
+                  <p>{selectedTicket.id}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-[#1A1A1A] mb-1">User</p>
+                  <p>{selectedTicket.customer.name}</p>
+                  <p className="text-sm text-[#1A1A1A]">{selectedTicket.customer.email}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-[#1A1A1A] mb-1">Order Number</p>
+                  <p>{selectedTicket.orderNumber || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Subject</p>
-                  <p>{ticket.subject}</p>
+                  <p>{selectedTicket.subject}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-[#1A1A1A] mb-1">Customer</p>
-                  <p>{ticket.customer.name}</p>
-                  <p className="text-sm text-[#1A1A1A]">{ticket.customer.email}</p>
-                </div>
-                {ticket.orderNumber && (
-                  <div>
-                    <p className="text-sm text-[#1A1A1A] mb-1">Order Number</p>
-                    <p>{ticket.orderNumber}</p>
-                  </div>
-                )}
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Date</p>
-                  <p>{ticket.date}</p>
+                  <p>{selectedTicket.date}</p>
                 </div>
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-6">
                 <h4 className="mb-3">Message</h4>
-                <div className="bg-[#F5F5F5] rounded p-4 text-sm">
-                  {ticket.message}
+                <div className="bg-[#F5F5F5] rounded p-4 text-sm text-[#1A1A1A]">
+                  {selectedTicket.message}
                 </div>
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-6">
                 <label className="block text-sm mb-2">Status</label>
                 <select
-                  value={ticket.status}
-                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A] mb-4"
+                  value={draftStatus}
+                  onChange={(event) => setDraftStatus(event.target.value as TicketStatus)}
+                  className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
                 >
-                  <option value="new">New</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
+                  {ticketStatusOptions.map((status) => (
+                    <option key={status.value} value={status.value}>
+                      {status.label}
+                    </option>
+                  ))}
                 </select>
-
-                <label className="block text-sm mb-2">Reply</label>
-                <textarea
-                  rows={4}
-                  className="w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A] resize-none mb-4"
-                  placeholder="Type your response..."
-                />
               </div>
 
-              <button className="w-full py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors">
-                Send Reply & Update
+              <button
+                type="button"
+                onClick={handleUpdateStatus}
+                className="w-full py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
+              >
+                Save changes
               </button>
             </div>
           ) : (

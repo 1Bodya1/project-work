@@ -1,52 +1,25 @@
 import { Link } from 'react-router';
 import { Minus, Plus, X, Edit2, ShoppingBag, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useCart } from '../store/CartContext';
 
 export default function Cart() {
-  const [items, setItems] = useState([
-    {
-      id: '1',
-      productId: '1',
-      name: 'Classic White T-Shirt',
-      image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200&h=200&fit=crop',
-      customImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop',
-      size: 'M',
-      color: 'White',
-      quantity: 2,
-      price: 399,
-      hasCustomDesign: true,
-    },
-    {
-      id: '2',
-      productId: '2',
-      name: 'Premium Black Hoodie',
-      image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=200&h=200&fit=crop',
-      customImage: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=100&h=100&fit=crop',
-      size: 'L',
-      color: 'Black',
-      quantity: 1,
-      price: 899,
-      hasCustomDesign: true,
-    },
-  ]);
+  const { items, isLoading, updateItem, removeItem } = useCart();
 
-  const removeItem = (id: string) => {
-    setItems(items.filter(item => item.id !== id));
-  };
-
-  const updateQuantity = (id: string, change: number) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const newQuantity = Math.max(1, item.quantity + change);
-        return { ...item, quantity: newQuantity };
-      }
-      return item;
-    }));
+  const updateQuantity = async (id: string, quantity: number, change: number) => {
+    await updateItem(id, { quantity: Math.max(1, quantity + change) });
   };
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = subtotal > 1000 ? 0 : 50;
   const total = subtotal + shipping;
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <p className="text-[#1A1A1A]">Loading cart...</p>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -63,7 +36,7 @@ export default function Cart() {
             to="/catalog"
             className="inline-block px-8 py-4 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
           >
-            Browse Catalog
+            Go to catalog
           </Link>
         </div>
       </div>
@@ -81,11 +54,11 @@ export default function Cart() {
               <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
                 <div className="w-full sm:w-32 h-32 bg-[#F5F5F5] rounded overflow-hidden flex-shrink-0 relative">
                   <img
-                    src={item.image}
-                    alt={item.name}
+                    src={item.previewUrl || item.image}
+                    alt={item.title}
                     className="w-full h-full object-cover"
                   />
-                  {item.customImage && (
+                  {item.customImage && item.previewUrl !== item.customImage && (
                     <div className="absolute inset-0 bg-white/90 flex items-center justify-center p-4">
                       <img
                         src={item.customImage}
@@ -99,15 +72,18 @@ export default function Cart() {
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex-1 min-w-0">
-                      <h3 className="mb-1 truncate">{item.name}</h3>
+                      <h3 className="mb-1 truncate">{item.title}</h3>
                       <p className="text-sm text-[#1A1A1A]">
                         Size: {item.size} • Color: {item.color}
                       </p>
-                      {item.hasCustomDesign && (
+                      <p className="text-sm text-[#1A1A1A] mt-1">Price: ₴{item.price}</p>
+                      {item.isCustomized ? (
                         <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
                           <Check className="w-4 h-4" />
                           Custom design saved
                         </p>
+                      ) : (
+                        <p className="text-sm text-[#1A1A1A] mt-1">No customization</p>
                       )}
                     </div>
                     <button
@@ -121,14 +97,14 @@ export default function Cart() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() => updateQuantity(item.id, -1)}
+                        onClick={() => updateQuantity(item.id, item.quantity, -1)}
                         className="w-8 h-8 border border-black/10 rounded flex items-center justify-center hover:bg-[#F5F5F5]"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
                       <span className="w-8 text-center">{item.quantity}</span>
                       <button
-                        onClick={() => updateQuantity(item.id, 1)}
+                        onClick={() => updateQuantity(item.id, item.quantity, 1)}
                         className="w-8 h-8 border border-black/10 rounded flex items-center justify-center hover:bg-[#F5F5F5]"
                       >
                         <Plus className="w-4 h-4" />
@@ -136,13 +112,15 @@ export default function Cart() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <Link
-                        to={`/customize/${item.productId}`}
-                        className="text-sm text-[#7A1F2A] hover:underline flex items-center gap-1"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                        Edit design
-                      </Link>
+                      {item.isCustomized && (
+                        <Link
+                          to={`/customize/${item.productId}`}
+                          className="text-sm text-[#7A1F2A] hover:underline flex items-center gap-1"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          Edit design
+                        </Link>
+                      )}
                       <p className="text-lg md:text-xl">₴{item.price * item.quantity}</p>
                     </div>
                   </div>

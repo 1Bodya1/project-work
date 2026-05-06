@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Check, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useCart } from '../store/CartContext';
+import { orderService } from '../services/orderService';
+import { paymentService } from '../services/paymentService';
 
-type PaymentStatus = 'idle' | 'pending' | 'success' | 'failed';
+type PaymentMethod = 'monobank' | 'liqpay' | '';
 
 export default function Checkout() {
   const navigate = useNavigate();
-  const [paymentMethod, setPaymentMethod] = useState('monobank');
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
-  const [orderId, setOrderId] = useState('');
+  const { items: cartItems } = useCart();
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('monobank');
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -16,31 +18,10 @@ export default function Checkout() {
     email: '',
     city: '',
     warehouse: '',
+    deliveryComment: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const cartItems = [
-    {
-      id: '1',
-      name: 'Classic White T-Shirt',
-      image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=100&h=100&fit=crop',
-      customImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop',
-      size: 'M',
-      color: 'White',
-      quantity: 2,
-      price: 399,
-    },
-    {
-      id: '2',
-      name: 'Premium Black Hoodie',
-      image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=100&h=100&fit=crop',
-      customImage: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=100&h=100&fit=crop',
-      size: 'L',
-      color: 'Black',
-      quantity: 1,
-      price: 899,
-    },
-  ];
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = subtotal > 1000 ? 0 : 50;
@@ -58,147 +39,63 @@ export default function Checkout() {
     if (!formData.email) newErrors.email = 'Email is required';
     if (!formData.city) newErrors.city = 'City is required';
     if (!formData.warehouse) newErrors.warehouse = 'Warehouse is required';
+    if (!paymentMethod) newErrors.paymentMethod = 'Payment method is required';
+    if (cartItems.length === 0) newErrors.cart = 'Your cart is empty';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    // Process payment
-    setPaymentStatus('pending');
+    setIsSubmitting(true);
 
-    // Simulate payment processing
-    setTimeout(() => {
-      const success = Math.random() > 0.2; // 80% success rate
-      if (success) {
-        setPaymentStatus('success');
-        setOrderId(`ORD-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`);
-      } else {
-        setPaymentStatus('failed');
-      }
-    }, 3000);
+    try {
+      const order = await orderService.createOrder({
+        total,
+        items: cartItems.map((item) => ({
+          id: item.id,
+          productId: item.productId,
+          name: item.title,
+          image: item.image || item.previewUrl || '',
+          customImage: item.customImage,
+          size: item.size,
+          color: item.color,
+          quantity: item.quantity,
+          price: item.price,
+          hasCustomDesign: item.isCustomized,
+        })),
+        customer: {
+          name: `${formData.firstName} ${formData.lastName}`,
+          email: formData.email,
+          phone: formData.phone,
+        },
+        delivery: {
+          provider: 'Nova Poshta',
+          city: formData.city,
+          warehouse: formData.warehouse,
+          comment: formData.deliveryComment,
+        },
+      });
+
+      await paymentService.createPayment(order.id, paymentMethod);
+      toast.success('Order created');
+      navigate(`/payment/pending?orderId=${order.id}&provider=${paymentMethod}`);
+    } catch {
+      setErrors({ form: 'Unable to create order. Please try again.' });
+      navigate('/payment/failed');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-
-  if (paymentStatus === 'success') {
-    return (
-      <div className="container mx-auto px-4 py-20">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check className="w-12 h-12 text-green-600" />
-          </div>
-          <h1 className="text-4xl mb-4">Payment Successful!</h1>
-          <p className="text-xl text-[#1A1A1A] mb-2">
-            Your order has been placed successfully
-          </p>
-          <p className="text-[#1A1A1A] mb-8">
-            Order number: <span className="font-medium">{orderId}</span>
-          </p>
-
-          <div className="bg-[#F5F5F5] rounded-lg p-6 mb-8 text-left">
-            <h3 className="mb-4">What's next?</h3>
-            <ul className="space-y-3 text-[#1A1A1A]">
-              <li className="flex gap-3">
-                <span className="text-[#7A1F2A]">1.</span>
-                <span>We'll send you an email confirmation</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-[#7A1F2A]">2.</span>
-                <span>Your custom design will be printed (3-5 business days)</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-[#7A1F2A]">3.</span>
-                <span>Your order will be shipped via Nova Poshta</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-[#7A1F2A]">4.</span>
-                <span>Track your delivery in your profile</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => navigate('/profile')}
-              className="px-8 py-4 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
-            >
-              View Order
-            </button>
-            <button
-              onClick={() => navigate('/catalog')}
-              className="px-8 py-4 border border-black rounded hover:bg-black hover:text-white transition-colors"
-            >
-              Continue Shopping
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (paymentStatus === 'failed') {
-    return (
-      <div className="container mx-auto px-4 py-20">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <X className="w-12 h-12 text-red-600" />
-          </div>
-          <h1 className="text-4xl mb-4">Payment Failed</h1>
-          <p className="text-xl text-[#1A1A1A] mb-8">
-            We couldn't process your payment. Please try again or use a different payment method.
-          </p>
-
-          <div className="bg-[#F5F5F5] rounded-lg p-6 mb-8 text-left">
-            <h3 className="mb-4">Common reasons for payment failure:</h3>
-            <ul className="space-y-2 text-[#1A1A1A] text-sm">
-              <li>• Insufficient funds</li>
-              <li>• Incorrect card details</li>
-              <li>• Card expired</li>
-              <li>• Transaction limit exceeded</li>
-              <li>• Bank declined the transaction</li>
-            </ul>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => setPaymentStatus('idle')}
-              className="px-8 py-4 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
-            >
-              Try Again
-            </button>
-            <button
-              onClick={() => navigate('/cart')}
-              className="px-8 py-4 border border-black rounded hover:bg-black hover:text-white transition-colors"
-            >
-              Back to Cart
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (paymentStatus === 'pending') {
-    return (
-      <div className="container mx-auto px-4 py-20">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="w-24 h-24 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-6">
-            <Loader2 className="w-12 h-12 text-[#7A1F2A] animate-spin" />
-          </div>
-          <h1 className="text-4xl mb-4">Processing Payment...</h1>
-          <p className="text-xl text-[#1A1A1A] mb-8">
-            Please wait while we process your payment via {paymentMethod === 'monobank' ? 'Monobank' : 'LiqPay'}
-          </p>
-          <p className="text-sm text-[#1A1A1A]">
-            Do not close or refresh this page
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl md:text-4xl mb-8">Checkout</h1>
+      {errors.form && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded p-4 mb-6">
+          {errors.form}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -288,7 +185,7 @@ export default function Checkout() {
                   )}
                 </div>
                 <div>
-                  <label className="block mb-2">Warehouse / Branch</label>
+                  <label className="block mb-2">Warehouse / Branch / Parcel Locker</label>
                   <select
                     value={formData.warehouse}
                     onChange={(e) => setFormData({ ...formData, warehouse: e.target.value })}
@@ -300,10 +197,21 @@ export default function Checkout() {
                     <option value="branch1">Branch #1: Khreshchatyk St.</option>
                     <option value="branch2">Branch #2: Shevchenko Blvd.</option>
                     <option value="branch3">Branch #3: Peremohy Ave.</option>
+                    <option value="parcel-locker1">Parcel locker #12: Central Mall</option>
                   </select>
                   {errors.warehouse && (
                     <p className="text-red-600 text-sm mt-1">{errors.warehouse}</p>
                   )}
+                </div>
+                <div>
+                  <label className="block mb-2">Delivery Comment</label>
+                  <textarea
+                    value={formData.deliveryComment}
+                    onChange={(e) => setFormData({ ...formData, deliveryComment: e.target.value })}
+                    className="w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                    placeholder="Optional comment for delivery"
+                    rows={3}
+                  />
                 </div>
               </div>
             </div>
@@ -319,7 +227,7 @@ export default function Checkout() {
                     name="payment"
                     value="monobank"
                     checked={paymentMethod === 'monobank'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                     className="w-4 h-4"
                   />
                   <span>Monobank</span>
@@ -332,17 +240,20 @@ export default function Checkout() {
                     name="payment"
                     value="liqpay"
                     checked={paymentMethod === 'liqpay'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                     className="w-4 h-4"
                   />
                   <span>LiqPay</span>
                 </label>
+                {errors.paymentMethod && (
+                  <p className="text-red-600 text-sm mt-1">{errors.paymentMethod}</p>
+                )}
               </div>
             </div>
           </div>
 
           <div>
-            <div className="bg-white border border-black/10 rounded-lg p-6 sticky top-24">
+            <div className="bg-white border border-black/10 rounded-lg p-6 lg:sticky lg:top-24">
               <h3 className="mb-4">Order Summary</h3>
 
               <div className="space-y-3 mb-6">
@@ -351,11 +262,11 @@ export default function Checkout() {
                     <div key={item.id} className="flex gap-3">
                       <div className="w-16 h-16 bg-[#F5F5F5] rounded relative overflow-hidden">
                         <img
-                          src={item.image}
-                          alt={item.name}
+                          src={item.previewUrl || item.image}
+                          alt={item.title}
                           className="w-full h-full object-cover"
                         />
-                        {item.customImage && (
+                        {item.customImage && item.previewUrl !== item.customImage && (
                           <div className="absolute inset-0 bg-white/90 flex items-center justify-center p-2">
                             <img
                               src={item.customImage}
@@ -366,11 +277,13 @@ export default function Checkout() {
                         )}
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm mb-1">{item.name}</p>
+                        <p className="text-sm mb-1">{item.title}</p>
                         <p className="text-xs text-[#1A1A1A]">
                           {item.size} • {item.color} • x{item.quantity}
                         </p>
-                        <p className="text-xs text-green-600">Custom design</p>
+                        <p className="text-xs text-[#1A1A1A]">
+                          {item.isCustomized ? 'Custom design' : 'No customization'}
+                        </p>
                       </div>
                       <p className="text-sm">₴{item.price * item.quantity}</p>
                     </div>
@@ -396,10 +309,14 @@ export default function Checkout() {
 
               <button
                 type="submit"
-                className="w-full py-4 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
+                disabled={isSubmitting}
+                className="w-full py-4 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Pay and place order
+                {isSubmitting ? 'Creating order...' : 'Pay and place order'}
               </button>
+              {errors.cart && (
+                <p className="text-red-600 text-sm mt-3 text-center">{errors.cart}</p>
+              )}
             </div>
           </div>
         </div>

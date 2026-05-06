@@ -1,0 +1,5 @@
+import type { CartItem } from '../types';
+export const mockCart: CartItem[] = [
+  { id: '1', productId: '1', title: 'Classic White T-Shirt', name: 'Classic White T-Shirt', image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200&h=200&fit=crop', previewUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200&h=200&fit=crop', customImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop', customDesignId: 'DSN-001', size: 'M', color: 'White', quantity: 2, price: 399, isCustomized: true, hasCustomDesign: true },
+  { id: '2', productId: '2', title: 'Premium Black Hoodie', name: 'Premium Black Hoodie', image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=200&h=200&fit=crop', previewUrl: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=200&h=200&fit=crop', customImage: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=100&h=100&fit=crop', customDesignId: 'DSN-002', size: 'L', color: 'Black', quantity: 1, price: 899, isCustomized: true, hasCustomDesign: true },
+];

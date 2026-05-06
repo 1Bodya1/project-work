@@ -1,31 +1,82 @@
 import { useState, useEffect } from 'react';
 import { ProductCard } from '../components/ProductCard';
-import { LoadingState, ProductCardSkeleton } from '../components/LoadingState';
+import { ProductCardSkeleton } from '../components/LoadingState';
 import { Search, SlidersHorizontal, X, ShoppingBag } from 'lucide-react';
+import { productService } from '../services/productService';
+import type { Category, Product } from '../types';
+
+type SortOption = 'newest' | 'price-asc' | 'price-desc';
+
+const colorOptions = ['#FFFFFF', '#000000', '#7A1F2A', '#F5F5F5', '#1A1A1A'];
+const sizeOptions = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
 export default function Catalog() {
   const [showFilters, setShowFilters] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-
-  const allProducts = [
-    { id: '1', name: 'Classic White T-Shirt', price: 399, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&h=500&fit=crop', colors: ['#FFFFFF', '#000000', '#7A1F2A'] },
-    { id: '2', name: 'Premium Black Hoodie', price: 899, image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500&h=500&fit=crop', colors: ['#000000', '#1A1A1A', '#FFFFFF'] },
-    { id: '3', name: 'Comfort Sweatshirt', price: 699, image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=500&h=500&fit=crop', colors: ['#F5F5F5', '#7A1F2A', '#000000'] },
-    { id: '4', name: 'Cotton Oversized Tee', price: 449, image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=500&h=500&fit=crop', colors: ['#FFFFFF', '#F5F5F5', '#1A1A1A'] },
-    { id: '5', name: 'Minimalist Black Tee', price: 399, image: 'https://images.unsplash.com/photo-1503341504253-dff4815485f1?w=500&h=500&fit=crop', colors: ['#000000', '#FFFFFF'] },
-    { id: '6', name: 'Urban Hoodie Gray', price: 849, image: 'https://images.unsplash.com/photo-1620799140188-3b2a02fd9a77?w=500&h=500&fit=crop', colors: ['#1A1A1A', '#F5F5F5'] },
-  ];
-
-  const products = searchQuery
-    ? allProducts.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : allProducts;
+  const [category, setCategory] = useState('');
+  const [color, setColor] = useState('');
+  const [size, setSize] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [sort, setSort] = useState<SortOption>('newest');
 
   useEffect(() => {
-    // Simulate loading products
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    let isMounted = true;
+
+    async function loadCatalog() {
+      setIsLoading(true);
+      setErrorMessage('');
+
+      try {
+        const [nextProducts, nextCategories] = await Promise.all([
+          productService.getProducts({
+            search: searchQuery,
+            category: category || undefined,
+            color: color || undefined,
+            size: size || undefined,
+            minPrice: minPrice ? Number(minPrice) : undefined,
+            maxPrice: maxPrice ? Number(maxPrice) : undefined,
+            sort,
+          }),
+          productService.getCategories(),
+        ]);
+
+        if (isMounted) {
+          setProducts(nextProducts);
+          setCategories(nextCategories);
+        }
+      } catch {
+        if (isMounted) {
+          setProducts([]);
+          setErrorMessage('Unable to load products. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadCatalog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchQuery, category, color, size, minPrice, maxPrice, sort]);
+
+  function clearFilters() {
+    setSearchQuery('');
+    setCategory('');
+    setColor('');
+    setSize('');
+    setMinPrice('');
+    setMaxPrice('');
+    setSort('newest');
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -64,7 +115,7 @@ export default function Catalog() {
         {/* Filters Sidebar */}
         <aside
           className={`
-            fixed lg:static top-0 right-0 h-full lg:h-auto w-80 lg:w-64 bg-white lg:bg-transparent
+            fixed lg:static top-0 right-0 h-full lg:h-auto w-80 max-w-[85vw] lg:max-w-none lg:w-64 bg-white lg:bg-transparent
             transform transition-transform duration-300 z-50 lg:z-0
             ${showFilters ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
             lg:flex-shrink-0
@@ -80,42 +131,80 @@ export default function Catalog() {
 
             <h3 className="mb-4">Category</h3>
             <div className="space-y-2 mb-6">
-              {['All', 'T-Shirts', 'Hoodies', 'Sweatshirts'].map((category) => (
-                <label key={category} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="rounded" />
-                  <span className="text-sm">{category}</span>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="category"
+                  checked={category === ''}
+                  onChange={() => setCategory('')}
+                  className="rounded"
+                />
+                <span className="text-sm">All</span>
+              </label>
+              {categories.map((item) => (
+                <label key={item.id} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="category"
+                    checked={category === item.name}
+                    onChange={() => setCategory(item.name)}
+                    className="rounded"
+                  />
+                  <span className="text-sm">{item.name}</span>
                 </label>
               ))}
             </div>
 
             <h3 className="mb-4">Price Range</h3>
             <div className="space-y-2 mb-6">
-              <input type="range" min="0" max="2000" className="w-full" />
-              <div className="flex justify-between text-sm text-[#1A1A1A]">
-                <span>₴0</span>
-                <span>₴2000</span>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Min"
+                  value={minPrice}
+                  onChange={(event) => setMinPrice(event.target.value)}
+                  className="w-full px-3 py-2 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Max"
+                  value={maxPrice}
+                  onChange={(event) => setMaxPrice(event.target.value)}
+                  className="w-full px-3 py-2 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
+                />
               </div>
             </div>
 
             <h3 className="mb-4">Color</h3>
             <div className="flex gap-2 mb-6 flex-wrap">
-              {['#FFFFFF', '#000000', '#7A1F2A', '#F5F5F5', '#1A1A1A'].map((color) => (
-                <div
-                  key={color}
-                  className="w-8 h-8 rounded-full border border-black/10 cursor-pointer hover:scale-110 transition-transform"
-                  style={{ backgroundColor: color }}
+              {colorOptions.map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setColor(color === item ? '' : item)}
+                  className={`w-8 h-8 rounded-full border cursor-pointer hover:scale-110 transition-transform ${
+                    color === item ? 'border-[#7A1F2A] ring-2 ring-[#7A1F2A]/30' : 'border-black/10'
+                  }`}
+                  style={{ backgroundColor: item }}
+                  aria-label={`Filter by color ${item}`}
                 />
               ))}
             </div>
 
             <h3 className="mb-4">Size</h3>
             <div className="grid grid-cols-3 gap-2">
-              {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => (
+              {sizeOptions.map((item) => (
                 <button
-                  key={size}
-                  className="px-3 py-2 border border-black/10 rounded text-sm hover:bg-[#F5F5F5] transition-colors"
+                  key={item}
+                  onClick={() => setSize(size === item ? '' : item)}
+                  className={`px-3 py-2 border rounded text-sm transition-colors ${
+                    size === item
+                      ? 'bg-black text-white border-black'
+                      : 'border-black/10 hover:bg-[#F5F5F5]'
+                  }`}
                 >
-                  {size}
+                  {item}
                 </button>
               ))}
             </div>
@@ -132,15 +221,29 @@ export default function Catalog() {
         <div className="flex-1 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <p className="text-[#1A1A1A]">{products.length} products</p>
-            <select className="px-4 py-2 bg-[#F5F5F5] rounded border-none">
-              <option>Sort by: Featured</option>
-              <option>Price: Low to High</option>
-              <option>Price: High to Low</option>
-              <option>Newest</option>
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SortOption)}
+              className="px-4 py-2 bg-[#F5F5F5] rounded border-none"
+            >
+              <option value="newest">Sort by: Newest</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
             </select>
           </div>
 
-          {isLoading ? (
+          {errorMessage ? (
+            <div className="text-center py-20">
+              <h2 className="text-2xl mb-2">Product loading error</h2>
+              <p className="text-[#1A1A1A] mb-6">{errorMessage}</p>
+              <button
+                onClick={clearFilters}
+                className="px-6 py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
+              >
+                Reset catalog
+              </button>
+            </div>
+          ) : isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
                 <ProductCardSkeleton key={i} />
@@ -151,15 +254,12 @@ export default function Catalog() {
               <div className="w-24 h-24 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-6">
                 <ShoppingBag className="w-12 h-12 text-[#1A1A1A]" />
               </div>
-              <h2 className="text-2xl mb-2">No products found</h2>
-              <p className="text-[#1A1A1A] mb-6">
-                Try adjusting your search or filters
-              </p>
+              <h2 className="text-2xl mb-2">Товарів за вашим запитом не знайдено</h2>
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={clearFilters}
                 className="px-6 py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
               >
-                Clear Search
+                Clear Filters
               </button>
             </div>
           ) : (

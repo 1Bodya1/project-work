@@ -20,8 +20,8 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F5]">
-      <div className="flex">
-        <aside className="w-64 bg-white border-r border-black/10 min-h-screen sticky top-0 flex flex-col">
+      <div className="flex flex-col lg:flex-row">
+        <aside className="bg-white border-b lg:border-b-0 lg:border-r border-black/10 lg:w-64 lg:min-h-screen lg:sticky lg:top-0 flex flex-col">
           <div className="p-6 border-b border-black/10">
             <Link to="/" className="text-2xl tracking-tight">
               Solution.
@@ -29,13 +29,13 @@ export default function AdminLayout() {
             <p className="text-sm text-[#1A1A1A] mt-1">Admin Panel</p>
           </div>
 
-          <nav className="flex-1 p-4">
-            <ul className="space-y-2">
+          <nav className="flex-1 p-4 overflow-x-auto">
+            <ul className="flex lg:block gap-2 lg:space-y-2 min-w-max lg:min-w-0">
               {navItems.map((item) => (
                 <li key={item.path}>
                   <Link
                     to={item.path}
-                    className={`flex items-center gap-3 px-4 py-3 rounded transition-colors ${
+                    className={`flex items-center gap-3 px-4 py-3 rounded whitespace-nowrap transition-colors ${
                       isActive(item.path)
                         ? 'bg-[#7A1F2A] text-white'
                         : 'text-[#1A1A1A] hover:bg-[#F5F5F5]'
@@ -49,7 +49,7 @@ export default function AdminLayout() {
             </ul>
           </nav>
 
-          <div className="p-4 border-t border-black/10">
+          <div className="hidden lg:block p-4 border-t border-black/10">
             <Link
               to="/"
               className="flex items-center gap-3 px-4 py-3 rounded text-[#1A1A1A] hover:bg-[#F5F5F5] transition-colors"
@@ -60,7 +60,7 @@ export default function AdminLayout() {
           </div>
         </aside>
 
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 md:p-8 min-w-0">
           <Outlet />
         </main>
       </div>

@@ -1,11 +1,21 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ShoppingCart, User, Menu, X, LogOut, Package } from 'lucide-react';
+import { useAuth } from '../store/AuthContext';
+import { useCart } from '../store/CartContext';
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // This would come from auth context
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const { isAuthenticated, isAdmin, logout } = useAuth();
+  const { items } = useCart();
+  const cartItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  async function handleLogout() {
+    await logout();
+    setIsProfileOpen(false);
+    setIsMenuOpen(false);
+  }
 
   return (
     <header className="border-b border-black/10 bg-white sticky top-0 z-50">
@@ -34,11 +44,11 @@ export function Header() {
             <Link to="/cart" className="hover:text-[#7A1F2A] transition-colors relative">
               <ShoppingCart className="w-5 h-5" />
               <span className="absolute -top-2 -right-2 bg-[#7A1F2A] text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                3
+                {cartItemCount}
               </span>
             </Link>
 
-            {isLoggedIn ? (
+            {isAuthenticated ? (
               <div className="relative">
                 <button
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -58,18 +68,25 @@ export function Header() {
                       Profile
                     </Link>
                     <Link
-                      to="/profile"
+                      to="/orders"
                       className="flex items-center gap-2 px-4 py-2 hover:bg-[#F5F5F5] transition-colors"
                       onClick={() => setIsProfileOpen(false)}
                     >
                       <Package className="w-4 h-4" />
                       Orders
                     </Link>
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        className="flex items-center gap-2 px-4 py-2 hover:bg-[#F5F5F5] transition-colors"
+                        onClick={() => setIsProfileOpen(false)}
+                      >
+                        <Package className="w-4 h-4" />
+                        Admin
+                      </Link>
+                    )}
                     <button
-                      onClick={() => {
-                        setIsLoggedIn(false);
-                        setIsProfileOpen(false);
-                      }}
+                      onClick={handleLogout}
                       className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[#F5F5F5] transition-colors text-left"
                     >
                       <LogOut className="w-4 h-4" />
@@ -97,7 +114,7 @@ export function Header() {
         </div>
 
         {isMenuOpen && (
-          <nav className="md:hidden border-t border-black/10 py-4">
+          <nav className="md:hidden border-t border-black/10 py-4 max-h-[calc(100vh-5rem)] overflow-y-auto">
             <div className="flex flex-col gap-4">
               <Link
                 to="/"
@@ -127,7 +144,41 @@ export function Header() {
               >
                 Support
               </Link>
-              {!isLoggedIn && (
+              {isAuthenticated && (
+                <>
+                  <Link
+                    to="/profile"
+                    className="hover:text-[#7A1F2A] transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Profile
+                  </Link>
+                  <Link
+                    to="/orders"
+                    className="hover:text-[#7A1F2A] transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Orders
+                  </Link>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="hover:text-[#7A1F2A] transition-colors"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Admin
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="text-left hover:text-[#7A1F2A] transition-colors"
+                  >
+                    Logout
+                  </button>
+                </>
+              )}
+              {!isAuthenticated && (
                 <Link
                   to="/login"
                   className="px-6 py-2.5 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors text-center"
