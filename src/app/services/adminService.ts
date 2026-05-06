@@ -1,9 +1,10 @@
 import { mockOrders } from '../mocks/mockOrders';
 import { mockProducts } from '../mocks/mockProducts';
 import { mockSupportTickets } from '../mocks/mockSupportTickets';
+import { DESIGN_STORAGE_KEY } from './designService';
 import { ORDERS_STORAGE_KEY } from './orderService';
 import { SUPPORT_TICKETS_STORAGE_KEY } from './supportService';
-import type { Order, OrderStatus, Product, SupportTicket, TicketStatus } from '../types';
+import type { CustomDesign, Order, OrderItem, OrderStatus, Product, SupportTicket, TicketStatus } from '../types';
 
 type CreateProductData = Omit<Product, 'id'>;
 type UpdateProductData = Partial<Omit<Product, 'id'>>;
@@ -59,6 +60,18 @@ function writeStoredOrders(orders: Order[]) {
   localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
 }
 
+function readStoredDesigns() {
+  const storedDesigns = localStorage.getItem(DESIGN_STORAGE_KEY);
+  if (!storedDesigns) return [];
+
+  try {
+    return JSON.parse(storedDesigns) as CustomDesign[];
+  } catch {
+    localStorage.removeItem(DESIGN_STORAGE_KEY);
+    return [];
+  }
+}
+
 function readStoredSupportTickets() {
   const storedTickets = localStorage.getItem(SUPPORT_TICKETS_STORAGE_KEY);
   if (!storedTickets) return [];
@@ -86,9 +99,12 @@ function getAllSupportTickets() {
 function normalizeOrder(order: Order): Order {
   const rawStatus = order.orderStatus || order.status || 'new';
   const orderStatus = rawStatus === 'pending' ? 'new' : rawStatus === 'delivered' ? 'completed' : rawStatus;
+  const designs = readStoredDesigns();
+  const items = order.items.map((item) => enrichOrderItemWithDesign(item, designs));
 
   return {
     ...order,
+    items,
     status: orderStatus,
     orderStatus,
     paymentProvider: order.paymentProvider || 'Monobank',
@@ -100,6 +116,36 @@ function normalizeOrder(order: Order): Order {
         : orderStatus === 'shipped'
           ? 'In transit'
           : 'Preparing shipment'),
+  };
+}
+
+function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): OrderItem {
+  const design = item.customDesignId
+    ? designs.find((storedDesign) => storedDesign.id === item.customDesignId)
+    : undefined;
+
+  if (!design) {
+    return {
+      ...item,
+      previewUrl: item.previewUrl || item.customDesignImage || item.customImage,
+      uploadedImageUrl: item.uploadedImageUrl || item.customImage || item.customDesignImage,
+      hasCustomDesign: item.hasCustomDesign || Boolean(item.customDesignId || item.previewUrl || item.customImage || item.customDesignImage),
+    };
+  }
+
+  return {
+    ...item,
+    customDesignId: item.customDesignId || design.id,
+    previewUrl: item.previewUrl || design.previewUrl || design.uploadedImageUrl || design.imageUrl,
+    uploadedImageUrl: item.uploadedImageUrl || design.uploadedImageUrl || design.imageUrl,
+    customImage: item.customImage || design.uploadedImageUrl || design.previewUrl,
+    customDesignImage: item.customDesignImage || design.previewUrl || design.uploadedImageUrl,
+    size: item.size || design.selectedSize,
+    color: item.color || design.selectedColor,
+    hasCustomDesign: true,
+    designPosition: item.designPosition || design.position,
+    designScale: item.designScale ?? design.scale,
+    designRotation: item.designRotation ?? design.rotation,
   };
 }
 

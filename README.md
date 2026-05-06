@@ -120,12 +120,12 @@ This keeps the frontend ready for future API integration while allowing the MVP 
 - `/admin/orders` Admin orders
 - `/admin/support` Admin support
 
-## Test Users
+## Test Credentials
 
 Mock login accepts any valid email and password.
 
-- User: `user@test.com`
-- Admin: `admin@solution.com`
+- User: `user@test.com` / `user123`
+- Admin: `admin@solution.com` / `admin123`
 
 Any email containing `admin` gets the admin role in mock mode.
 

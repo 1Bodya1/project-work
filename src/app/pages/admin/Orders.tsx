@@ -26,6 +26,24 @@ function getDeliveryStatus(orderStatus: OrderStatus, trackingNumber?: string) {
   return 'Preparing shipment';
 }
 
+function isCustomizedItem(item: Order['items'][number]) {
+  return Boolean(
+    item.hasCustomDesign ||
+      item.customDesignId ||
+      item.previewUrl ||
+      item.customImage ||
+      item.customDesignImage,
+  );
+}
+
+function getCustomPreview(item: Order['items'][number]) {
+  return item.previewUrl || item.customDesignImage || item.customImage;
+}
+
+function getUploadedDesignPreview(item: Order['items'][number]) {
+  return item.uploadedImageUrl || item.customImage || item.customDesignImage || item.previewUrl;
+}
+
 export default function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -97,12 +115,13 @@ export default function AdminOrders() {
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">All Orders</h3>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px]">
+              <table className="w-full min-w-[980px]">
                 <thead>
                   <tr className="border-b border-black/10">
                     <th className="text-left pb-3 text-sm">Order Number</th>
                     <th className="text-left pb-3 text-sm">Customer</th>
                     <th className="text-left pb-3 text-sm">Total</th>
+                    <th className="text-left pb-3 text-sm">Customized</th>
                     <th className="text-left pb-3 text-sm">Payment</th>
                     <th className="text-left pb-3 text-sm">Order Status</th>
                     <th className="text-left pb-3 text-sm">Tracking</th>
@@ -113,7 +132,7 @@ export default function AdminOrders() {
                 <tbody>
                   {orders.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-[#1A1A1A]">
+                      <td colSpan={9} className="py-8 text-center text-[#1A1A1A]">
                         No admin orders
                       </td>
                     </tr>
@@ -128,6 +147,15 @@ export default function AdminOrders() {
                       <td className="py-4">{order.id}</td>
                       <td className="py-4">{order.customer?.name || 'Customer'}</td>
                       <td className="py-4">₴{order.total}</td>
+                      <td className="py-4">
+                        {order.items.some(isCustomizedItem) ? (
+                          <span className="inline-block px-2 py-1 text-xs rounded bg-green-100 text-green-800">
+                            {order.items.filter(isCustomizedItem).length} item(s)
+                          </span>
+                        ) : (
+                          <span className="text-sm text-[#1A1A1A]">No</span>
+                        )}
+                      </td>
                       <td className="py-4">
                         <StatusBadge status={order.paymentStatus} size="sm" />
                       </td>
@@ -181,7 +209,9 @@ export default function AdminOrders() {
               <div className="border-t border-black/10 pt-4 mb-6">
                 <h4 className="mb-3">Products</h4>
                 {selectedOrder.items.map((item, index) => {
-                  const customPreview = item.customDesignImage || item.customImage;
+                  const customPreview = getCustomPreview(item);
+                  const uploadedDesignPreview = getUploadedDesignPreview(item);
+                  const isCustomized = isCustomizedItem(item);
 
                   return (
                     <div key={`${selectedOrder.id}-${item.productId || item.name}-${index}`} className="mb-4">
@@ -199,37 +229,66 @@ export default function AdminOrders() {
                             Size: {item.size || '-'} • Color: {item.color || '-'} • x{item.quantity}
                           </p>
                           <p className="text-xs text-[#1A1A1A]">₴{item.price || 0}</p>
-                          {(item.hasCustomDesign || customPreview) && (
-                            <p className="text-xs text-green-600 mt-1">Custom design saved</p>
+                          {isCustomized && (
+                            <p className="text-xs text-green-600 mt-1">Customized</p>
                           )}
                         </div>
                       </div>
 
-                      {customPreview && (
+                      {isCustomized && (
                         <div className="bg-[#F5F5F5] rounded p-3 space-y-3">
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <Image className="w-4 h-4 text-[#7A1F2A]" />
-                              <p className="text-xs">Customized Design Preview</p>
+                          {customPreview && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <Image className="w-4 h-4 text-[#7A1F2A]" />
+                                <p className="text-xs">Customized Product Preview</p>
+                              </div>
+                              <div className="w-full h-32 bg-white rounded overflow-hidden">
+                                <img
+                                  src={customPreview}
+                                  alt="Customized product preview"
+                                  className="w-full h-full object-contain p-2"
+                                />
+                              </div>
                             </div>
-                            <div className="w-full h-32 bg-white rounded overflow-hidden">
-                              <img
-                                src={customPreview}
-                                alt="Customized design preview"
-                                className="w-full h-full object-contain p-2"
-                              />
-                            </div>
-                          </div>
+                          )}
 
-                          <div>
-                            <p className="text-xs mb-2">Uploaded Design Image</p>
-                            <div className="w-full h-24 bg-white rounded overflow-hidden">
-                              <img
-                                src={customPreview}
-                                alt="Uploaded design"
-                                className="w-full h-full object-contain p-2"
-                              />
+                          {uploadedDesignPreview && (
+                            <div>
+                              <p className="text-xs mb-2">Uploaded Design Image</p>
+                              <div className="w-full h-24 bg-white rounded overflow-hidden">
+                                <img
+                                  src={uploadedDesignPreview}
+                                  alt="Uploaded design"
+                                  className="w-full h-full object-contain p-2"
+                                />
+                              </div>
                             </div>
+                          )}
+
+                          <div className="space-y-1 text-xs text-[#1A1A1A] break-all">
+                            <p>
+                              <span className="text-black">customDesignId:</span>{' '}
+                              {item.customDesignId || '-'}
+                            </p>
+                            <p>
+                              <span className="text-black">previewUrl:</span>{' '}
+                              {item.previewUrl || customPreview || '-'}
+                            </p>
+                            <p>
+                              <span className="text-black">Position:</span>{' '}
+                              {item.designPosition
+                                ? `x ${item.designPosition.x}, y ${item.designPosition.y}`
+                                : '-'}
+                            </p>
+                            <p>
+                              <span className="text-black">Scale:</span>{' '}
+                              {item.designScale ?? '-'}
+                            </p>
+                            <p>
+                              <span className="text-black">Rotation:</span>{' '}
+                              {item.designRotation ?? '-'}
+                            </p>
                           </div>
                         </div>
                       )}

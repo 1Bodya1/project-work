@@ -52,6 +52,7 @@ export interface Product {
 export interface CustomDesign {
   id: string;
   productId?: string;
+  productTitle?: string;
   uploadedImageUrl?: string;
   imageUrl?: string;
   previewUrl?: string;
@@ -94,13 +95,19 @@ export interface OrderItem {
   productId?: string;
   name: string;
   image: string;
+  previewUrl?: string;
   customImage?: string;
   customDesignImage?: string;
+  customDesignId?: string;
+  uploadedImageUrl?: string;
   size?: string;
   color?: string;
   quantity: number;
   price?: number;
   hasCustomDesign?: boolean;
+  designPosition?: { x: number; y: number };
+  designScale?: number;
+  designRotation?: number;
 }
 
 export interface DeliveryInfo {

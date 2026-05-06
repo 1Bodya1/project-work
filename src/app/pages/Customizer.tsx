@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Check, ChevronRight, Move, RotateCw, Save, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { ProductPreview3D } from '../components/ProductPreview3D';
+import { designService } from '../services/designService';
 import { productService } from '../services/productService';
 import { useCart } from '../store/CartContext';
 import type { Product } from '../types';
 
 const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+type PreviewMode = '2d' | '3d';
 
 export default function Customizer() {
   const { id, productId } = useParams();
@@ -24,6 +27,15 @@ export default function Customizer() {
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [isDesignSaved, setIsDesignSaved] = useState(false);
+  const [customDesignId, setCustomDesignId] = useState('');
+  const [savedPreviewUrl, setSavedPreviewUrl] = useState('');
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('2d');
+
+  function markDesignUnsaved() {
+    setIsDesignSaved(false);
+    setCustomDesignId('');
+    setSavedPreviewUrl('');
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -73,6 +85,8 @@ export default function Customizer() {
       setImageScale(50);
       setImageRotation(0);
       setIsDesignSaved(false);
+      setCustomDesignId('');
+      setSavedPreviewUrl('');
     };
     reader.readAsDataURL(file);
     event.target.value = '';
@@ -81,20 +95,53 @@ export default function Customizer() {
   function deleteDesign() {
     setUploadedImage(null);
     setIsDesignSaved(false);
+    setCustomDesignId('');
+    setSavedPreviewUrl('');
   }
 
-  function saveDesign() {
+  async function saveDesign() {
+    if (!product) return;
+
     if (!uploadedImage) {
       toast.error('Upload a design first');
       return;
     }
 
+    if (!selectedSize) {
+      toast.error('Select a size before saving your design');
+      return;
+    }
+
+    if (!selectedColor) {
+      toast.error('Select a color before saving your design');
+      return;
+    }
+
+    const previewUrl = uploadedImage;
+    const { customDesignId: nextCustomDesignId } = await designService.saveDesign({
+      productId: product.id,
+      productTitle: product.name,
+      uploadedImageUrl: uploadedImage,
+      previewUrl,
+      selectedSize,
+      selectedColor,
+      position: imagePosition,
+      scale: imageScale,
+      rotation: imageRotation,
+      canvasState: {
+        mode: 'figma-style-mock',
+        printArea: { width: 60, height: 40 },
+      },
+    });
+
+    setCustomDesignId(nextCustomDesignId);
+    setSavedPreviewUrl(previewUrl);
     setIsDesignSaved(true);
     toast.success('Design saved');
   }
 
   async function addToCart() {
-    if (!product || !uploadedImage || !isDesignSaved) {
+    if (!product || !isDesignSaved || !customDesignId || !savedPreviewUrl) {
       toast.error('Please save your design first');
       return;
     }
@@ -104,9 +151,9 @@ export default function Customizer() {
       title: product.name,
       name: product.name,
       image: product.image,
-      previewUrl: uploadedImage,
-      customImage: uploadedImage,
-      customDesignId: `MOCK-DESIGN-${Date.now()}`,
+      previewUrl: savedPreviewUrl,
+      customImage: savedPreviewUrl,
+      customDesignId,
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -170,41 +217,76 @@ export default function Customizer() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 order-1">
+          <div className="mb-4 flex rounded border border-black/10 overflow-hidden bg-white w-full sm:w-fit">
+            <button
+              type="button"
+              onClick={() => setPreviewMode('2d')}
+              className={`flex-1 sm:flex-none px-5 py-2.5 text-sm transition-colors ${
+                previewMode === '2d' ? 'bg-[#7A1F2A] text-white' : 'hover:bg-[#F5F5F5]'
+              }`}
+            >
+              2D Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewMode('3d')}
+              className={`flex-1 sm:flex-none px-5 py-2.5 text-sm transition-colors ${
+                previewMode === '3d' ? 'bg-[#7A1F2A] text-white' : 'hover:bg-[#F5F5F5]'
+              }`}
+            >
+              3D Preview
+            </button>
+          </div>
+
           <div className="bg-[#F5F5F5] rounded-lg p-3 sm:p-6 md:p-8 flex items-center justify-center">
-            <div className="relative w-full max-w-xs sm:max-w-md aspect-[3/4] bg-white rounded-lg shadow-lg overflow-hidden">
-              <img src={productImage} alt={product.name} className="w-full h-full object-cover" />
-
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="border-2 border-dashed border-[#7A1F2A] bg-[#7A1F2A]/5 relative w-[60%] h-[40%]">
-                  {uploadedImage ? (
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: `url(${uploadedImage})`,
-                        backgroundSize: 'contain',
-                        backgroundPosition: 'center',
-                        backgroundRepeat: 'no-repeat',
-                        transform: `translate(${imagePosition.x - 50}%, ${imagePosition.y - 50}%) scale(${imageScale / 100}) rotate(${imageRotation}deg)`,
-                      }}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-[#7A1F2A] text-sm">
-                      Print Area
-                    </div>
-                  )}
-                </div>
+            {previewMode === '3d' ? (
+              <div className="w-full max-w-2xl">
+                <ProductPreview3D
+                  designImage={uploadedImage}
+                  position={imagePosition}
+                  scale={imageScale}
+                  rotation={imageRotation}
+                  color={selectedColor}
+                />
+                <p className="text-xs text-[#1A1A1A] text-center mt-3">
+                  Drag to rotate the 3D preview. This is optional and does not affect checkout.
+                </p>
               </div>
+            ) : (
+              <div className="relative w-full max-w-xs sm:max-w-md aspect-[3/4] bg-white rounded-lg shadow-lg overflow-hidden">
+                <img src={productImage} alt={product.name} className="w-full h-full object-cover" />
 
-              {isDesignSaved && (
-                <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm flex items-center gap-1">
-                  <Check className="w-4 h-4" />
-                  Design saved
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="border-2 border-dashed border-[#7A1F2A] bg-[#7A1F2A]/5 relative w-[60%] h-[40%]">
+                    {uploadedImage ? (
+                      <div
+                        className="absolute inset-0"
+                        style={{
+                          backgroundImage: `url(${uploadedImage})`,
+                          backgroundSize: 'contain',
+                          backgroundPosition: 'center',
+                          backgroundRepeat: 'no-repeat',
+                          transform: `translate(${imagePosition.x - 50}%, ${imagePosition.y - 50}%) scale(${imageScale / 100}) rotate(${imageRotation}deg)`,
+                        }}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-[#7A1F2A] text-sm">
+                        Print Area
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {isDesignSaved && (
+                  <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm flex items-center gap-1">
+                    <Check className="w-4 h-4" />
+                    Design saved
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-
         <div className="space-y-6 order-2">
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-4">Upload Design</h3>
@@ -240,7 +322,7 @@ export default function Customizer() {
                   value={imagePosition.x}
                   onChange={(event) => {
                     setImagePosition({ ...imagePosition, x: Number(event.target.value) });
-                    setIsDesignSaved(false);
+                    markDesignUnsaved();
                   }}
                   className="w-full"
                   disabled={!uploadedImage}
@@ -259,7 +341,7 @@ export default function Customizer() {
                   value={imagePosition.y}
                   onChange={(event) => {
                     setImagePosition({ ...imagePosition, y: Number(event.target.value) });
-                    setIsDesignSaved(false);
+                    markDesignUnsaved();
                   }}
                   className="w-full"
                   disabled={!uploadedImage}
@@ -275,7 +357,7 @@ export default function Customizer() {
                   value={imageScale}
                   onChange={(event) => {
                     setImageScale(Number(event.target.value));
-                    setIsDesignSaved(false);
+                    markDesignUnsaved();
                   }}
                   className="w-full"
                   disabled={!uploadedImage}
@@ -294,7 +376,7 @@ export default function Customizer() {
                   value={imageRotation}
                   onChange={(event) => {
                     setImageRotation(Number(event.target.value));
-                    setIsDesignSaved(false);
+                    markDesignUnsaved();
                   }}
                   className="w-full"
                   disabled={!uploadedImage}
@@ -323,7 +405,7 @@ export default function Customizer() {
                     key={size}
                     onClick={() => {
                       setSelectedSize(size);
-                      setIsDesignSaved(false);
+                      markDesignUnsaved();
                     }}
                     className={`px-3 py-2 border rounded text-sm transition-colors ${selectedSize === size ? 'bg-black text-white border-black' : 'border-black/10 hover:bg-[#F5F5F5]'}`}
                   >
@@ -341,7 +423,7 @@ export default function Customizer() {
                     key={color}
                     onClick={() => {
                       setSelectedColor(color);
-                      setIsDesignSaved(false);
+                      markDesignUnsaved();
                     }}
                     className={`w-8 h-8 rounded-full border transition-transform hover:scale-110 ${selectedColor === color ? 'border-[#7A1F2A] ring-2 ring-[#7A1F2A]/30' : 'border-black/10'}`}
                     style={{ backgroundColor: color }}
@@ -365,8 +447,7 @@ export default function Customizer() {
             <div className="space-y-2">
               <button
                 onClick={saveDesign}
-                disabled={!uploadedImage}
-                className="w-full py-3 bg-black text-white rounded flex items-center justify-center gap-2 hover:bg-[#1A1A1A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-black text-white rounded flex items-center justify-center gap-2 hover:bg-[#1A1A1A] transition-colors"
               >
                 <Save className="w-4 h-4" />
                 Save design
