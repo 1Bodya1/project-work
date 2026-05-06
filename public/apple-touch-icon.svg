@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Solution app icon">
+  <rect width="180" height="180" rx="32" fill="#FFFFFF"/>
+  <rect x="1" y="1" width="178" height="178" rx="31" fill="none" stroke="#E8E8E8" stroke-width="2"/>
+  <text
+    x="50%"
+    y="53%"
+    dominant-baseline="middle"
+    text-anchor="middle"
+    fill="#000000"
+    font-family="Inter, Arial, Helvetica, sans-serif"
+    font-size="84"
+    font-weight="600"
+    letter-spacing="-3"
+  >S.</text>
+</svg>

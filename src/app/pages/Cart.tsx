@@ -1,6 +1,18 @@
 import { Link } from 'react-router';
 import { Minus, Plus, X, Edit2, ShoppingBag, Check } from 'lucide-react';
 import { useCart } from '../store/CartContext';
+import type { CartItem } from '../types';
+
+function getUsedPlacementLabels(item: CartItem) {
+  if (item.usedPlacements?.length) return item.usedPlacements;
+
+  const placements = item.customDesignPlacements || item.customDesign?.placements;
+  if (!placements) return [];
+
+  return Object.values(placements)
+    .filter((placement) => placement.uploadedImage)
+    .map((placement) => placement.label || 'Placement');
+}
 
 export default function Cart() {
   const { items, isLoading, updateItem, removeItem } = useCart();
@@ -51,6 +63,10 @@ export default function Cart() {
         <div className="lg:col-span-2 space-y-4">
           {items.map((item) => (
             <div key={item.id} className="bg-white border border-black/10 rounded-lg p-4 md:p-6">
+              {(() => {
+                const usedPlacements = getUsedPlacementLabels(item);
+
+                return (
               <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
                 <div className="w-full sm:w-32 h-32 bg-[#F5F5F5] rounded overflow-hidden flex-shrink-0 relative">
                   <img
@@ -84,6 +100,21 @@ export default function Cart() {
                         </p>
                       ) : (
                         <p className="text-sm text-[#1A1A1A] mt-1">No customization</p>
+                      )}
+                      {usedPlacements.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-xs text-[#1A1A1A] mb-1">Print areas:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {usedPlacements.map((placement) => (
+                              <span
+                                key={placement}
+                                className="text-xs px-2 py-1 bg-[#F5F5F5] border border-black/10 rounded"
+                              >
+                                {placement}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                     <button
@@ -126,6 +157,8 @@ export default function Cart() {
                   </div>
                 </div>
               </div>
+                );
+              })()}
             </div>
           ))}
         </div>

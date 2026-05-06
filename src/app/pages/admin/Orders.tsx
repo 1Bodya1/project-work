@@ -44,6 +44,17 @@ function getUploadedDesignPreview(item: Order['items'][number]) {
   return item.uploadedImageUrl || item.customImage || item.customDesignImage || item.previewUrl;
 }
 
+function getUsedPlacementLabels(item: Order['items'][number]) {
+  if (item.usedPlacements?.length) return item.usedPlacements;
+
+  const placements = item.customDesignPlacements || item.customDesign?.placements;
+  if (!placements) return [];
+
+  return Object.values(placements)
+    .filter((placement) => placement.uploadedImage)
+    .map((placement) => placement.label || 'Placement');
+}
+
 export default function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -212,6 +223,7 @@ export default function AdminOrders() {
                   const customPreview = getCustomPreview(item);
                   const uploadedDesignPreview = getUploadedDesignPreview(item);
                   const isCustomized = isCustomizedItem(item);
+                  const usedPlacements = getUsedPlacementLabels(item);
 
                   return (
                     <div key={`${selectedOrder.id}-${item.productId || item.name}-${index}`} className="mb-4">
@@ -231,6 +243,11 @@ export default function AdminOrders() {
                           <p className="text-xs text-[#1A1A1A]">₴{item.price || 0}</p>
                           {isCustomized && (
                             <p className="text-xs text-green-600 mt-1">Customized</p>
+                          )}
+                          {usedPlacements.length > 0 && (
+                            <p className="text-xs text-[#1A1A1A] mt-1">
+                              Areas: {usedPlacements.join(', ')}
+                            </p>
                           )}
                         </div>
                       </div>
@@ -272,6 +289,10 @@ export default function AdminOrders() {
                               {item.customDesignId || '-'}
                             </p>
                             <p>
+                              <span className="text-black">Used placements:</span>{' '}
+                              {usedPlacements.length > 0 ? usedPlacements.join(', ') : '-'}
+                            </p>
+                            <p>
                               <span className="text-black">previewUrl:</span>{' '}
                               {item.previewUrl || customPreview || '-'}
                             </p>
@@ -290,6 +311,28 @@ export default function AdminOrders() {
                               {item.designRotation ?? '-'}
                             </p>
                           </div>
+
+                          {item.customDesignPlacements && (
+                            <div className="space-y-2">
+                              <p className="text-xs">Placement Metadata</p>
+                              {Object.entries(item.customDesignPlacements)
+                                .filter(([, placement]) => placement.uploadedImage)
+                                .map(([placementId, placement]) => (
+                                  <div key={placementId} className="bg-white rounded p-2 text-xs text-[#1A1A1A]">
+                                    <p className="text-black">{placement.label || placementId}</p>
+                                    <p>Position: x {placement.position.x}, y {placement.position.y}</p>
+                                    <p>Scale: {placement.scale}</p>
+                                    <p>Rotation: {placement.rotation}</p>
+                                    {placement.printArea && (
+                                      <p>
+                                        Print area: x {placement.printArea.x}, y {placement.printArea.y}, w{' '}
+                                        {placement.printArea.width}, h {placement.printArea.height}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

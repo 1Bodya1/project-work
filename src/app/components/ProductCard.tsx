@@ -3,6 +3,12 @@ import { Link } from 'react-router';
 interface ProductCardProps {
   id: string;
   image: string;
+  mockups?: {
+    front: string;
+    back: string;
+    left: string;
+    right: string;
+  };
   name: string;
   title?: string;
   price: number;
@@ -15,6 +21,7 @@ interface ProductCardProps {
 export function ProductCard({
   id,
   image,
+  mockups,
   name,
   title,
   price,
@@ -25,15 +32,16 @@ export function ProductCard({
 }: ProductCardProps) {
   const displayTitle = title || name;
   const canCustomize = isCustomizable ?? customizable;
+  const productImage = mockups?.front || image;
 
   return (
     <div className="group">
       <Link to={`/product/${id}`} className="block">
-        <div className="aspect-square bg-[#F5F5F5] rounded overflow-hidden mb-3">
+        <div className="aspect-square bg-[#F5F5F5] border border-black/5 shadow-sm rounded overflow-hidden mb-3">
           <img
-            src={image}
+            src={productImage}
             alt={displayTitle}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
           />
         </div>
         <h3 className="mb-1">{displayTitle}</h3>

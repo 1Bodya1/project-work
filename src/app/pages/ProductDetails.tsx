@@ -36,7 +36,7 @@ export default function ProductDetails() {
 
         if (isMounted) {
           setProduct(nextProduct);
-          setSelectedImage(nextProduct?.images?.[0] || nextProduct?.image || '');
+          setSelectedImage(nextProduct?.mockups?.front || nextProduct?.images?.[0] || nextProduct?.image || '');
           setSelectedColor('');
           setSelectedSize('');
           setQuantity(1);
@@ -127,18 +127,20 @@ export default function ProductDetails() {
     );
   }
 
-  const productImages = product.images?.length ? product.images : [product.image];
+  const productImages = product.mockups
+    ? [product.mockups.front, product.mockups.back, product.mockups.left, product.mockups.right]
+    : product.images?.length ? product.images : [product.image];
   const canCustomize = product.isCustomizable ?? product.customizable;
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         <div>
-          <div className="aspect-square bg-[#F5F5F5] rounded overflow-hidden mb-4">
+          <div className="aspect-square bg-[#F5F5F5] border border-black/5 shadow-sm rounded overflow-hidden mb-4">
             <img
               src={selectedImage || product.image}
               alt={product.name}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain p-6"
             />
           </div>
           <div className="grid grid-cols-4 gap-2">
@@ -146,14 +148,14 @@ export default function ProductDetails() {
               <button
                 key={`${image}-${index}`}
                 onClick={() => setSelectedImage(image)}
-                className={`aspect-square bg-[#F5F5F5] rounded overflow-hidden cursor-pointer hover:opacity-75 transition-opacity ${
+                className={`aspect-square bg-[#F5F5F5] border border-black/5 rounded overflow-hidden cursor-pointer hover:opacity-75 transition-opacity ${
                   selectedImage === image ? 'ring-2 ring-[#7A1F2A]' : ''
                 }`}
               >
                 <img
                   src={image}
                   alt={`${product.name} view ${index + 1}`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain p-2"
                 />
               </button>
             ))}

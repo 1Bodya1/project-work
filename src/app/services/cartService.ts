@@ -20,6 +20,13 @@ const CART_STORAGE_KEY = 'solution_cart';
 
 function normalizeItem(item: CartItem): CartItem {
   const title = item.title || item.name || 'Product';
+  const customDesignPlacements = item.customDesignPlacements || item.customDesign?.placements;
+  const usedPlacements =
+    item.usedPlacements ||
+    Object.values(customDesignPlacements || {})
+      .filter((placement) => placement.uploadedImage)
+      .map((placement) => placement.label || 'Placement');
+
   return {
     ...item,
     title,
@@ -29,6 +36,8 @@ function normalizeItem(item: CartItem): CartItem {
     customDesignId: item.customDesignId || item.designId,
     isCustomized: item.isCustomized ?? Boolean(item.hasCustomDesign || item.customImage),
     hasCustomDesign: item.hasCustomDesign ?? item.isCustomized,
+    customDesignPlacements,
+    usedPlacements,
   };
 }
 

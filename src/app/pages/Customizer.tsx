@@ -10,6 +10,59 @@ import type { Product } from '../types';
 
 const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
 type PreviewMode = '2d' | '3d';
+type PrintPlacement = 'front' | 'back' | 'leftSleeve' | 'rightSleeve' | 'leftSide' | 'rightSide';
+type PlacementView = 'front' | 'back' | 'left' | 'right';
+type PlacementState = {
+  uploadedImage: string | null;
+  position: { x: number; y: number };
+  scale: number;
+  rotation: number;
+};
+
+const printPlacements: Array<{ id: PrintPlacement; label: string; view: PlacementView }> = [
+  { id: 'front', label: 'Front', view: 'front' },
+  { id: 'back', label: 'Back', view: 'back' },
+  { id: 'leftSleeve', label: 'Left sleeve', view: 'left' },
+  { id: 'rightSleeve', label: 'Right sleeve', view: 'right' },
+  { id: 'leftSide', label: 'Left side', view: 'left' },
+  { id: 'rightSide', label: 'Right side', view: 'right' },
+];
+
+const defaultPlacementState: PlacementState = {
+  uploadedImage: null,
+  position: { x: 50, y: 50 },
+  scale: 50,
+  rotation: 0,
+};
+
+function createDefaultPlacements(): Record<PrintPlacement, PlacementState> {
+  return printPlacements.reduce(
+    (placements, placement) => ({
+      ...placements,
+      [placement.id]: {
+        uploadedImage: defaultPlacementState.uploadedImage,
+        position: { ...defaultPlacementState.position },
+        scale: defaultPlacementState.scale,
+        rotation: defaultPlacementState.rotation,
+      },
+    }),
+    {} as Record<PrintPlacement, PlacementState>,
+  );
+}
+
+function resolvePlacementArea(product: Product, placement: PrintPlacement) {
+  const frontArea = product.printArea || { x: 31, y: 30, width: 38, height: 34 };
+  const placementAreas: Record<PrintPlacement, typeof frontArea> = {
+    front: frontArea,
+    back: { x: frontArea.x, y: frontArea.y, width: frontArea.width, height: frontArea.height },
+    leftSleeve: { x: 38, y: 25, width: 26, height: 32 },
+    rightSleeve: { x: 36, y: 25, width: 26, height: 32 },
+    leftSide: { x: 35, y: 31, width: 30, height: 36 },
+    rightSide: { x: 35, y: 31, width: 30, height: 36 },
+  };
+
+  return placementAreas[placement];
+}
 
 export default function Customizer() {
   const { id, productId } = useParams();
@@ -20,10 +73,8 @@ export default function Customizer() {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
-  const [imageScale, setImageScale] = useState(50);
-  const [imageRotation, setImageRotation] = useState(0);
+  const [activePlacement, setActivePlacement] = useState<PrintPlacement>('front');
+  const [placements, setPlacements] = useState<Record<PrintPlacement, PlacementState>>(createDefaultPlacements);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [isDesignSaved, setIsDesignSaved] = useState(false);
@@ -35,6 +86,18 @@ export default function Customizer() {
     setIsDesignSaved(false);
     setCustomDesignId('');
     setSavedPreviewUrl('');
+  }
+
+  function updateActivePlacement(data: Partial<PlacementState>) {
+    setPlacements((currentPlacements) => ({
+      ...currentPlacements,
+      [activePlacement]: {
+        ...currentPlacements[activePlacement],
+        ...data,
+        position: data.position || currentPlacements[activePlacement].position,
+      },
+    }));
+    markDesignUnsaved();
   }
 
   useEffect(() => {
@@ -51,6 +114,8 @@ export default function Customizer() {
         setProduct(nextProduct);
         setSelectedSize(nextProduct?.sizes?.[0] || '');
         setSelectedColor(nextProduct?.colors?.[0] || '');
+        setActivePlacement('front');
+        setPlacements(createDefaultPlacements());
         setIsLoading(false);
       }
     }
@@ -80,29 +145,31 @@ export default function Customizer() {
 
     const reader = new FileReader();
     reader.onload = (readerEvent) => {
-      setUploadedImage(readerEvent.target?.result as string);
-      setImagePosition({ x: 50, y: 50 });
-      setImageScale(50);
-      setImageRotation(0);
-      setIsDesignSaved(false);
-      setCustomDesignId('');
-      setSavedPreviewUrl('');
+      updateActivePlacement({
+        uploadedImage: readerEvent.target?.result as string,
+        position: { x: 50, y: 50 },
+        scale: 50,
+        rotation: 0,
+      });
     };
     reader.readAsDataURL(file);
     event.target.value = '';
   }
 
   function deleteDesign() {
-    setUploadedImage(null);
-    setIsDesignSaved(false);
-    setCustomDesignId('');
-    setSavedPreviewUrl('');
+    updateActivePlacement({
+      uploadedImage: null,
+      position: { x: 50, y: 50 },
+      scale: 50,
+      rotation: 0,
+    });
   }
 
   async function saveDesign() {
     if (!product) return;
 
-    if (!uploadedImage) {
+    const designedPlacements = printPlacements.filter((placement) => placements[placement.id].uploadedImage);
+    if (!designedPlacements.length) {
       toast.error('Upload a design first');
       return;
     }
@@ -117,26 +184,46 @@ export default function Customizer() {
       return;
     }
 
-    const previewUrl = uploadedImage;
-    const { customDesignId: nextCustomDesignId } = await designService.saveDesign({
+    const primaryPlacement = placements[activePlacement].uploadedImage
+      ? activePlacement
+      : designedPlacements[0].id;
+    const primaryState = placements[primaryPlacement];
+    const previewUrl = primaryState.uploadedImage || '';
+    const placementData = printPlacements.reduce(
+      (data, placement) => ({
+        ...data,
+        [placement.id]: {
+          ...placements[placement.id],
+          label: placement.label,
+          view: placement.view,
+          printArea: resolvePlacementArea(product, placement.id),
+        },
+      }),
+      {} as Record<PrintPlacement, PlacementState & { label: string; view: PlacementView; printArea: ReturnType<typeof resolvePlacementArea> }>,
+    );
+
+    const { customDesignId: nextCustomDesignId, design } = await designService.saveDesign({
       productId: product.id,
       productTitle: product.name,
-      uploadedImageUrl: uploadedImage,
+      uploadedImageUrl: previewUrl,
       previewUrl,
       selectedSize,
       selectedColor,
-      position: imagePosition,
-      scale: imageScale,
-      rotation: imageRotation,
+      position: primaryState.position,
+      scale: primaryState.scale,
+      rotation: primaryState.rotation,
+      placements: placementData,
       canvasState: {
         mode: 'figma-style-mock',
-        printArea: { width: 60, height: 40 },
+        activePlacement,
+        placements: placementData,
       },
     });
 
     setCustomDesignId(nextCustomDesignId);
     setSavedPreviewUrl(previewUrl);
     setIsDesignSaved(true);
+    sessionStorage.setItem('solution_last_saved_design', JSON.stringify(design));
     toast.success('Design saved');
   }
 
@@ -145,6 +232,12 @@ export default function Customizer() {
       toast.error('Please save your design first');
       return;
     }
+
+    const savedDesign = sessionStorage.getItem('solution_last_saved_design');
+    const parsedDesign = savedDesign ? JSON.parse(savedDesign) : undefined;
+    const usedPlacements = printPlacements
+      .filter((placement) => placements[placement.id].uploadedImage)
+      .map((placement) => placement.label);
 
     await addItem({
       productId: product.id,
@@ -160,13 +253,21 @@ export default function Customizer() {
       price: product.price,
       isCustomized: true,
       hasCustomDesign: true,
+      customDesign: parsedDesign,
+      customDesignPlacements: parsedDesign?.placements,
+      usedPlacements,
     });
 
     toast.success('Added to cart!');
     navigate('/cart');
   }
 
-  const currentStep = !uploadedImage ? 1 : isDesignSaved ? 4 : 3;
+  const activePlacementState = placements[activePlacement];
+  const currentStep = !printPlacements.some((placement) => placements[placement.id].uploadedImage)
+    ? 1
+    : isDesignSaved
+      ? 4
+      : 3;
 
   if (isLoading) {
     return (
@@ -190,7 +291,15 @@ export default function Customizer() {
     );
   }
 
-  const productImage = product.images?.[0] || product.image;
+  const activePlacementMeta = printPlacements.find((placement) => placement.id === activePlacement) || printPlacements[0];
+  const productImage = product.mockups?.[activePlacementMeta.view] || product.images?.[0] || product.image;
+  const printArea = resolvePlacementArea(product, activePlacement);
+  const printAreaStyle = {
+    left: `${printArea.x}%`,
+    top: `${printArea.y}%`,
+    width: `${printArea.width}%`,
+    height: `${printArea.height}%`,
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -242,39 +351,43 @@ export default function Customizer() {
             {previewMode === '3d' ? (
               <div className="w-full max-w-2xl">
                 <ProductPreview3D
-                  designImage={uploadedImage}
-                  position={imagePosition}
-                  scale={imageScale}
-                  rotation={imageRotation}
+                  designImage={activePlacementState.uploadedImage}
+                  position={activePlacementState.position}
+                  scale={activePlacementState.scale}
+                  rotation={activePlacementState.rotation}
                   color={selectedColor}
+                  category={product.category}
+                  printArea={printArea}
+                  placement={activePlacement}
                 />
                 <p className="text-xs text-[#1A1A1A] text-center mt-3">
                   Drag to rotate the 3D preview. This is optional and does not affect checkout.
                 </p>
               </div>
             ) : (
-              <div className="relative w-full max-w-xs sm:max-w-md aspect-[3/4] bg-white rounded-lg shadow-lg overflow-hidden">
-                <img src={productImage} alt={product.name} className="w-full h-full object-cover" />
+              <div className="relative w-full max-w-xs sm:max-w-md aspect-[3/4] bg-[#F5F5F5] border border-black/5 rounded-lg shadow-lg overflow-hidden">
+                <img src={productImage} alt={product.name} className="w-full h-full object-contain p-4" />
 
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="border-2 border-dashed border-[#7A1F2A] bg-[#7A1F2A]/5 relative w-[60%] h-[40%]">
-                    {uploadedImage ? (
-                      <div
-                        className="absolute inset-0"
-                        style={{
-                          backgroundImage: `url(${uploadedImage})`,
-                          backgroundSize: 'contain',
-                          backgroundPosition: 'center',
-                          backgroundRepeat: 'no-repeat',
-                          transform: `translate(${imagePosition.x - 50}%, ${imagePosition.y - 50}%) scale(${imageScale / 100}) rotate(${imageRotation}deg)`,
-                        }}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-[#7A1F2A] text-sm">
-                        Print Area
-                      </div>
-                    )}
-                  </div>
+                <div
+                  className="absolute border-2 border-dashed border-[#7A1F2A] bg-[#7A1F2A]/5 overflow-hidden pointer-events-none"
+                  style={printAreaStyle}
+                >
+                  {activePlacementState.uploadedImage ? (
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        backgroundImage: `url(${activePlacementState.uploadedImage})`,
+                        backgroundSize: 'contain',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        transform: `translate(${activePlacementState.position.x - 50}%, ${activePlacementState.position.y - 50}%) scale(${activePlacementState.scale / 100}) rotate(${activePlacementState.rotation}deg)`,
+                      }}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-[#7A1F2A] text-sm">
+                      Print Area
+                    </div>
+                  )}
                 </div>
 
                 {isDesignSaved && (
@@ -289,6 +402,34 @@ export default function Customizer() {
         </div>
         <div className="space-y-6 order-2">
           <div className="bg-white border border-black/10 rounded-lg p-6">
+            <h3 className="mb-4">Print Area</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {printPlacements.map((placement) => {
+                const hasDesign = Boolean(placements[placement.id].uploadedImage);
+
+                return (
+                  <button
+                    key={placement.id}
+                    type="button"
+                    onClick={() => setActivePlacement(placement.id)}
+                    className={`px-3 py-2 border rounded text-sm transition-colors ${
+                      activePlacement === placement.id
+                        ? 'bg-[#7A1F2A] text-white border-[#7A1F2A]'
+                        : 'border-black/10 hover:bg-[#F5F5F5]'
+                    }`}
+                  >
+                    {placement.label}
+                    {hasDesign && <span className="ml-1">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-[#1A1A1A] mt-3">
+              Each area keeps its own uploaded image and adjustments.
+            </p>
+          </div>
+
+          <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-4">Upload Design</h3>
             <input
               ref={fileInputRef}
@@ -302,7 +443,7 @@ export default function Customizer() {
               className="w-full py-3 border-2 border-dashed border-black/20 rounded flex items-center justify-center gap-2 hover:bg-[#F5F5F5] transition-colors"
             >
               <Upload className="w-5 h-5" />
-              {uploadedImage ? 'Change Image' : 'Upload Image'}
+              {activePlacementState.uploadedImage ? 'Change Image' : 'Upload Image'}
             </button>
             <p className="text-xs text-[#1A1A1A] mt-2">PNG, JPG, JPEG, WEBP, GIF</p>
           </div>
@@ -313,79 +454,79 @@ export default function Customizer() {
               <div>
                 <label className="flex items-center gap-2 mb-2 text-sm">
                   <Move className="w-4 h-4" />
-                  Position X: {imagePosition.x}%
+                  Position X: {activePlacementState.position.x}%
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  value={imagePosition.x}
+                  value={activePlacementState.position.x}
                   onChange={(event) => {
-                    setImagePosition({ ...imagePosition, x: Number(event.target.value) });
-                    markDesignUnsaved();
+                    updateActivePlacement({
+                      position: { ...activePlacementState.position, x: Number(event.target.value) },
+                    });
                   }}
                   className="w-full"
-                  disabled={!uploadedImage}
+                  disabled={!activePlacementState.uploadedImage}
                 />
               </div>
 
               <div>
                 <label className="flex items-center gap-2 mb-2 text-sm">
                   <Move className="w-4 h-4" />
-                  Position Y: {imagePosition.y}%
+                  Position Y: {activePlacementState.position.y}%
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  value={imagePosition.y}
+                  value={activePlacementState.position.y}
                   onChange={(event) => {
-                    setImagePosition({ ...imagePosition, y: Number(event.target.value) });
-                    markDesignUnsaved();
+                    updateActivePlacement({
+                      position: { ...activePlacementState.position, y: Number(event.target.value) },
+                    });
                   }}
                   className="w-full"
-                  disabled={!uploadedImage}
+                  disabled={!activePlacementState.uploadedImage}
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm">Size: {imageScale}%</label>
+                <label className="mb-2 block text-sm">Size: {activePlacementState.scale}%</label>
                 <input
                   type="range"
                   min="10"
                   max="120"
-                  value={imageScale}
+                  value={activePlacementState.scale}
                   onChange={(event) => {
-                    setImageScale(Number(event.target.value));
-                    markDesignUnsaved();
+                    updateActivePlacement({ scale: Number(event.target.value) });
                   }}
                   className="w-full"
-                  disabled={!uploadedImage}
+                  disabled={!activePlacementState.uploadedImage}
                 />
               </div>
 
               <div>
                 <label className="flex items-center gap-2 mb-2 text-sm">
                   <RotateCw className="w-4 h-4" />
-                  Rotation: {imageRotation}°
+                  Rotation: {activePlacementState.rotation}°
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="360"
-                  value={imageRotation}
+                  value={activePlacementState.rotation}
                   onChange={(event) => {
-                    setImageRotation(Number(event.target.value));
-                    markDesignUnsaved();
+                    updateActivePlacement({ rotation: Number(event.target.value) });
                   }}
                   className="w-full"
-                  disabled={!uploadedImage}
+                  disabled={!activePlacementState.uploadedImage}
                 />
               </div>
 
               <button
                 onClick={deleteDesign}
-                disabled={!uploadedImage}
+                disabled={!activePlacementState.uploadedImage}
                 className="w-full py-2 border border-black/10 rounded flex items-center justify-center gap-2 hover:bg-[#F5F5F5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 className="w-4 h-4" />
@@ -459,7 +600,7 @@ export default function Customizer() {
               >
                 Add to cart
               </button>
-              {!isDesignSaved && uploadedImage && (
+              {!isDesignSaved && printPlacements.some((placement) => placements[placement.id].uploadedImage) && (
                 <p className="text-xs text-[#1A1A1A] text-center">Save your design to add to cart</p>
               )}
             </div>

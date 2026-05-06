@@ -123,8 +123,10 @@ function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): Or
   const design = item.customDesignId
     ? designs.find((storedDesign) => storedDesign.id === item.customDesignId)
     : undefined;
+  const inlineDesign = item.customDesign;
+  const resolvedDesign = design || inlineDesign;
 
-  if (!design) {
+  if (!resolvedDesign) {
     return {
       ...item,
       previewUrl: item.previewUrl || item.customDesignImage || item.customImage,
@@ -135,17 +137,24 @@ function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): Or
 
   return {
     ...item,
-    customDesignId: item.customDesignId || design.id,
-    previewUrl: item.previewUrl || design.previewUrl || design.uploadedImageUrl || design.imageUrl,
-    uploadedImageUrl: item.uploadedImageUrl || design.uploadedImageUrl || design.imageUrl,
-    customImage: item.customImage || design.uploadedImageUrl || design.previewUrl,
-    customDesignImage: item.customDesignImage || design.previewUrl || design.uploadedImageUrl,
-    size: item.size || design.selectedSize,
-    color: item.color || design.selectedColor,
+    customDesign: resolvedDesign,
+    customDesignId: item.customDesignId || resolvedDesign.id,
+    previewUrl: item.previewUrl || resolvedDesign.previewUrl || resolvedDesign.uploadedImageUrl || resolvedDesign.imageUrl,
+    uploadedImageUrl: item.uploadedImageUrl || resolvedDesign.uploadedImageUrl || resolvedDesign.imageUrl,
+    customImage: item.customImage || resolvedDesign.uploadedImageUrl || resolvedDesign.previewUrl,
+    customDesignImage: item.customDesignImage || resolvedDesign.previewUrl || resolvedDesign.uploadedImageUrl,
+    size: item.size || resolvedDesign.selectedSize,
+    color: item.color || resolvedDesign.selectedColor,
     hasCustomDesign: true,
-    designPosition: item.designPosition || design.position,
-    designScale: item.designScale ?? design.scale,
-    designRotation: item.designRotation ?? design.rotation,
+    designPosition: item.designPosition || resolvedDesign.position,
+    designScale: item.designScale ?? resolvedDesign.scale,
+    designRotation: item.designRotation ?? resolvedDesign.rotation,
+    customDesignPlacements: item.customDesignPlacements || resolvedDesign.placements,
+    usedPlacements:
+      item.usedPlacements ||
+      Object.values(resolvedDesign.placements || {})
+        .filter((placement) => placement.uploadedImage)
+        .map((placement) => placement.label || 'Placement'),
   };
 }
 

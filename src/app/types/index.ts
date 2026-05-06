@@ -33,6 +33,12 @@ export interface Product {
   price: number;
   image: string;
   images?: string[];
+  mockups?: {
+    front: string;
+    back: string;
+    left: string;
+    right: string;
+  };
   colors?: string[];
   category?: string;
   customizable?: boolean;
@@ -61,7 +67,23 @@ export interface CustomDesign {
   rotation: number;
   selectedColor?: string;
   selectedSize?: string;
+  placements?: Record<string, CustomDesignPlacement>;
   canvasState?: unknown;
+}
+
+export interface CustomDesignPlacement {
+  uploadedImage: string | null;
+  position: { x: number; y: number };
+  scale: number;
+  rotation: number;
+  label?: string;
+  view?: string;
+  printArea?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface CartItem {
@@ -80,6 +102,9 @@ export interface CartItem {
   price: number;
   isCustomized: boolean;
   hasCustomDesign?: boolean;
+  customDesign?: CustomDesign;
+  customDesignPlacements?: CustomDesign['placements'];
+  usedPlacements?: string[];
 }
 
 export interface Cart {
@@ -108,6 +133,9 @@ export interface OrderItem {
   designPosition?: { x: number; y: number };
   designScale?: number;
   designRotation?: number;
+  customDesign?: CustomDesign;
+  customDesignPlacements?: CustomDesign['placements'];
+  usedPlacements?: string[];
 }
 
 export interface DeliveryInfo {
