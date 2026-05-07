@@ -44,16 +44,14 @@ function normalizeItem(item: CartItem): CartItem {
 function readItems() {
   const storedCart = localStorage.getItem(CART_STORAGE_KEY);
   if (!storedCart) {
-    const initialItems = mockCart.map(normalizeItem);
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(initialItems));
-    return initialItems;
+    return [];
   }
 
   try {
     return (JSON.parse(storedCart) as CartItem[]).map(normalizeItem);
   } catch {
     localStorage.removeItem(CART_STORAGE_KEY);
-    return mockCart.map(normalizeItem);
+    return [];
   }
 }
 

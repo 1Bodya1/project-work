@@ -112,7 +112,7 @@ export default function Support() {
                   value={formData.orderNumber}
                   onChange={(event) => handleFieldChange('orderNumber', event.target.value)}
                   className="w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
-                  placeholder="ORD-001"
+                  placeholder="Order number"
                 />
               </div>
 

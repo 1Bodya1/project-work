@@ -161,8 +161,9 @@ export default function AdminDashboard() {
             <tbody>
               {recentOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-[#1A1A1A]">
-                    No admin orders
+                  <td colSpan={7} className="py-8 text-center">
+                    <h4 className="mb-2">No admin orders</h4>
+                    <p className="text-[#1A1A1A]">Checkout-created orders will appear here.</p>
                   </td>
                 </tr>
               ) : recentOrders.map((order) => (
