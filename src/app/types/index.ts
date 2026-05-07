@@ -39,6 +39,12 @@ export interface Product {
     left: string;
     right: string;
   };
+  mockupsByColor?: Record<string, {
+    front: string;
+    back: string;
+    left: string;
+    right: string;
+  }>;
   colors?: string[];
   category?: string;
   customizable?: boolean;
@@ -57,6 +63,7 @@ export interface Product {
 
 export interface CustomDesign {
   id: string;
+  customDesignId?: string;
   productId?: string;
   productTitle?: string;
   uploadedImageUrl?: string;

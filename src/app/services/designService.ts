@@ -28,8 +28,17 @@ export const designService = {
   },
 
   async saveDesign(data: SaveDesignData) {
-    const design = { id: `DSN-${Date.now()}`, ...data };
-    writeDesigns([...readDesigns(), design]);
+    const designs = readDesigns();
+    const existingDesign = data.productId
+      ? designs.find((item) => item.productId === data.productId)
+      : null;
+    const designId = existingDesign?.id || `DSN-${Date.now()}`;
+    const design = { id: designId, customDesignId: designId, ...data };
+    const nextDesigns = data.productId
+      ? [design, ...designs.filter((item) => item.productId !== data.productId)]
+      : [design, ...designs];
+
+    writeDesigns(nextDesigns);
     return { customDesignId: design.id, design };
   },
 
@@ -38,6 +47,10 @@ export const designService = {
     if (design) return design;
 
     return { id, imageUrl: '', position: { x: 50, y: 50 }, scale: 1, rotation: 0 };
+  },
+
+  async getDesignByProductId(productId: string) {
+    return readDesigns().find((item) => item.productId === productId) || null;
   },
 };
 

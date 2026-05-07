@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ProductCard } from '../components/ProductCard';
 import { ProductCardSkeleton } from '../components/LoadingState';
 import { Search, SlidersHorizontal, X, ShoppingBag } from 'lucide-react';
+import { getProductMockup } from '../lib/productMockups';
 import { productService } from '../services/productService';
 import type { Category, Product } from '../types';
 
@@ -271,7 +272,11 @@ export default function Catalog() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {products.map((product) => (
-                <ProductCard key={product.id} {...product} />
+                <ProductCard
+                  key={product.id}
+                  {...product}
+                  image={getProductMockup(product, 'front', product.colors?.[0])}
+                />
               ))}
             </div>
           )}

@@ -1,14 +1,12 @@
 import { Link } from 'react-router';
+import { getProductMockup, getProductMockupFallback } from '../lib/productMockups';
+import type { Product } from '../types';
 
 interface ProductCardProps {
   id: string;
-  image: string;
-  mockups?: {
-    front: string;
-    back: string;
-    left: string;
-    right: string;
-  };
+  image?: string;
+  mockups?: Product['mockups'];
+  mockupsByColor?: Product['mockupsByColor'];
   name: string;
   title?: string;
   price: number;
@@ -22,6 +20,7 @@ export function ProductCard({
   id,
   image,
   mockups,
+  mockupsByColor,
   name,
   title,
   price,
@@ -32,7 +31,9 @@ export function ProductCard({
 }: ProductCardProps) {
   const displayTitle = title || name;
   const canCustomize = isCustomizable ?? customizable;
-  const productImage = mockups?.front || image;
+  const product = { id, image: image || '', mockups, mockupsByColor, name, price, colors } as Product;
+  const productImage = getProductMockup(product, 'front', colors[0]);
+  const fallbackImage = getProductMockupFallback(product, 'front');
 
   return (
     <div className="group">
@@ -41,6 +42,11 @@ export function ProductCard({
           <img
             src={productImage}
             alt={displayTitle}
+            onError={(event) => {
+              if (event.currentTarget.src !== window.location.origin + fallbackImage) {
+                event.currentTarget.src = fallbackImage;
+              }
+            }}
             className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
           />
         </div>

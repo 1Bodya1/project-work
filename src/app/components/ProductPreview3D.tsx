@@ -239,6 +239,7 @@ function loadPlacementImage(src: string) {
 
 async function createMultiPlacementCanvasTexture(
   placements: Partial<Record<PrintPlacement, ProductPreviewPlacementData>>,
+  shirtColor = '#ffffff',
 ) {
   const canvas = document.createElement('canvas');
   canvas.width = TEXTURE_SIZE;
@@ -247,7 +248,7 @@ async function createMultiPlacementCanvasTexture(
   const context = canvas.getContext('2d');
   if (!context) return null;
 
-  context.fillStyle = '#ffffff';
+  context.fillStyle = shirtColor || '#ffffff';
   context.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
 
   const placementEntries = await Promise.all(
@@ -392,6 +393,7 @@ function GarmentModelWithDecal({
   position,
   scale,
   rotation,
+  color,
   placement,
   placements,
 }: ProductPreview3DProps & { placement: PrintPlacement }) {
@@ -449,7 +451,7 @@ function GarmentModelWithDecal({
       return;
     }
 
-    createMultiPlacementCanvasTexture(resolvedPlacements)
+    createMultiPlacementCanvasTexture(resolvedPlacements, color || '#ffffff')
       .then((texture) => {
         if (!isMounted) return;
 
@@ -465,9 +467,11 @@ function GarmentModelWithDecal({
     return () => {
       isMounted = false;
     };
-  }, [placementTextureKey, resolvedPlacements]);
+  }, [color, placementTextureKey, resolvedPlacements]);
 
   useEffect(() => {
+    const shirtColor = color || '#ffffff';
+
     scene.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
       const sourceMaterial = Array.isArray(object.material) ? object.material[0] : object.material;
@@ -477,10 +481,11 @@ function GarmentModelWithDecal({
         ? sourceMaterial.clone()
         : new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0 });
 
-      material.color.set('#ffffff');
+      material.color.set(shirtColor);
 
       if (FRONT_BODY_MESH_NAMES.has(object.name) && USE_UV_TEXTURE_PREVIEW && shirtTexture) {
         material.map = shirtTexture;
+        material.color.set('#ffffff');
         material.roughness = 0.62;
         material.metalness = 0;
       } else {
@@ -490,7 +495,7 @@ function GarmentModelWithDecal({
       material.needsUpdate = true;
       object.material = material;
     });
-  }, [placement, scene, shirtTexture]);
+  }, [color, placement, scene, shirtTexture]);
 
   const placementMethod = PLACEMENT_RENDER_METHOD[placement];
   const shouldShowFallbackPrint = Boolean(
@@ -526,6 +531,7 @@ export function ProductPreview3D({
   position = { x: 50, y: 50 },
   scale = 50,
   rotation = 0,
+  color,
   placement = 'front',
   activePlacement,
   placements,
@@ -595,6 +601,7 @@ export function ProductPreview3D({
             position={resolvedPosition}
             scale={resolvedScale}
             rotation={resolvedRotation}
+            color={color}
             placement={resolvedPlacement}
             placements={placements}
           />

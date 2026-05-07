@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { getProductMockup, getProductMockupFallback, getProductMockupList } from '../lib/productMockups';
 import { productService } from '../services/productService';
 import { useCart } from '../store/CartContext';
 import type { Product } from '../types';
@@ -36,7 +37,7 @@ export default function ProductDetails() {
 
         if (isMounted) {
           setProduct(nextProduct);
-          setSelectedImage(nextProduct?.mockups?.front || nextProduct?.images?.[0] || nextProduct?.image || '');
+          setSelectedImage(nextProduct ? getProductMockup(nextProduct, 'front', nextProduct.colors?.[0]) : '');
           setSelectedColor('');
           setSelectedSize('');
           setQuantity(1);
@@ -79,12 +80,14 @@ export default function ProductDetails() {
     }
 
     try {
+      const productImage = getProductMockup(product, 'front', selectedColor || product.colors?.[0]);
+
       await addItem({
         productId: product.id,
         title: product.name,
         name: product.name,
-        image: product.image,
-        previewUrl: product.image,
+        image: productImage,
+        previewUrl: productImage,
         size: selectedSize,
         color: selectedColor,
         quantity,
@@ -133,9 +136,8 @@ export default function ProductDetails() {
     );
   }
 
-  const productImages = product.mockups
-    ? [product.mockups.front, product.mockups.back, product.mockups.left, product.mockups.right]
-    : product.images?.length ? product.images : [product.image];
+  const activeColorForImages = selectedColor || product.colors?.[0];
+  const productImages = getProductMockupList(product, activeColorForImages);
   const canCustomize = product.isCustomizable ?? product.customizable;
 
   return (
@@ -144,8 +146,14 @@ export default function ProductDetails() {
         <div>
           <div className="aspect-square bg-[#F5F5F5] border border-black/5 shadow-sm rounded overflow-hidden mb-4">
             <img
-              src={selectedImage || product.image}
+              src={selectedImage || getProductMockup(product, 'front', activeColorForImages)}
               alt={product.name}
+              onError={(event) => {
+                const fallbackImage = getProductMockupFallback(product, 'front');
+                if (event.currentTarget.src !== window.location.origin + fallbackImage) {
+                  event.currentTarget.src = fallbackImage;
+                }
+              }}
               className="w-full h-full object-contain p-6"
             />
           </div>
@@ -161,6 +169,12 @@ export default function ProductDetails() {
                 <img
                   src={image}
                   alt={`${product.name} view ${index + 1}`}
+                  onError={(event) => {
+                    const fallbackImage = getProductMockupFallback(product, ['front', 'back', 'left', 'right'][index] as 'front' | 'back' | 'left' | 'right');
+                    if (event.currentTarget.src !== window.location.origin + fallbackImage) {
+                      event.currentTarget.src = fallbackImage;
+                    }
+                  }}
                   className="w-full h-full object-contain p-2"
                 />
               </button>
@@ -181,6 +195,7 @@ export default function ProductDetails() {
                   key={color}
                   onClick={() => {
                     setSelectedColor(color);
+                    setSelectedImage(getProductMockup(product, 'front', color));
                     setErrorMessage('');
                   }}
                   className={`w-10 h-10 rounded-full border-2 transition-all ${

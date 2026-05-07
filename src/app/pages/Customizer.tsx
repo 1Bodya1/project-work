@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Check, ChevronRight, Move, RotateCw, Save, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProductPreview3D } from '../components/ProductPreview3D';
+import { getProductMockup, getProductMockupFallback } from '../lib/productMockups';
 import { designService } from '../services/designService';
 import { productService } from '../services/productService';
 import { useCart } from '../store/CartContext';
@@ -60,6 +61,85 @@ function createDefaultPlacements(): Record<PrintPlacement, PlacementState> {
     }),
     {} as Record<PrintPlacement, PlacementState>,
   );
+}
+
+function restorePlacementsFromDesign(design: CustomDesign): Record<PrintPlacement, PlacementState> {
+  const defaultPlacements = createDefaultPlacements();
+
+  return printPlacements.reduce(
+    (placements, placement) => {
+      const savedPlacement = design.placements?.[placement.id];
+
+      return {
+        ...placements,
+        [placement.id]: {
+          ...defaultPlacements[placement.id],
+          uploadedImage: savedPlacement?.uploadedImage || null,
+          uploadedImageUrl: savedPlacement?.uploadedImageUrl || savedPlacement?.uploadedImage || null,
+          previewUrl: savedPlacement?.previewUrl || null,
+          position: savedPlacement?.position || defaultPlacements[placement.id].position,
+          scale: savedPlacement?.scale ?? defaultPlacements[placement.id].scale,
+          rotation: savedPlacement?.rotation ?? defaultPlacements[placement.id].rotation,
+          isActive: placement.id === (design.activePlacement || 'front'),
+        },
+      };
+    },
+    {} as Record<PrintPlacement, PlacementState>,
+  );
+}
+
+function getPlacementSnapshot(placement: PlacementState | CustomDesign['placements'][string] | undefined) {
+  return {
+    image: placement?.uploadedImageUrl || placement?.uploadedImage || placement?.previewUrl || null,
+    previewUrl: placement?.previewUrl || null,
+    position: placement?.position || { x: 50, y: 50 },
+    scale: placement?.scale ?? 50,
+    rotation: placement?.rotation ?? 0,
+  };
+}
+
+function getCurrentDesignSnapshot(
+  placements: Record<PrintPlacement, PlacementState>,
+  selectedSize: string,
+  selectedColor: string,
+) {
+  return {
+    selectedSize,
+    selectedColor,
+    placements: printPlacements.reduce(
+      (snapshot, placement) => ({
+        ...snapshot,
+        [placement.id]: getPlacementSnapshot(placements[placement.id]),
+      }),
+      {} as Record<PrintPlacement, ReturnType<typeof getPlacementSnapshot>>,
+    ),
+  };
+}
+
+function getSavedDesignSnapshot(design: CustomDesign) {
+  return {
+    selectedSize: design.selectedSize || '',
+    selectedColor: design.selectedColor || '',
+    placements: printPlacements.reduce(
+      (snapshot, placement) => ({
+        ...snapshot,
+        [placement.id]: getPlacementSnapshot(design.placements?.[placement.id]),
+      }),
+      {} as Record<PrintPlacement, ReturnType<typeof getPlacementSnapshot>>,
+    ),
+  };
+}
+
+function doesCurrentDesignMatchSaved(
+  placements: Record<PrintPlacement, PlacementState>,
+  selectedSize: string,
+  selectedColor: string,
+  savedDesign: CustomDesign | null,
+) {
+  if (!savedDesign) return false;
+
+  return JSON.stringify(getCurrentDesignSnapshot(placements, selectedSize, selectedColor))
+    === JSON.stringify(getSavedDesignSnapshot(savedDesign));
 }
 
 function resolvePlacementArea(product: Product, placement: PrintPlacement) {
@@ -132,9 +212,6 @@ export default function Customizer() {
 
   function markDesignUnsaved() {
     setIsDesignSaved(false);
-    setCustomDesignId('');
-    setSavedPreviewUrl('');
-    setSavedDesign(null);
   }
 
   function updateActivePlacement(data: Partial<PlacementState>) {
@@ -183,12 +260,19 @@ export default function Customizer() {
       }
 
       const nextProduct = await productService.getProductById(resolvedProductId);
+      const productDesign = nextProduct
+        ? await designService.getDesignByProductId(nextProduct.id)
+        : null;
       if (isMounted) {
         setProduct(nextProduct);
-        setSelectedSize(nextProduct?.sizes?.[0] || '');
-        setSelectedColor(nextProduct?.colors?.[0] || '');
-        setActivePlacement('front');
-        setPlacements(createDefaultPlacements());
+        setSelectedSize(productDesign?.selectedSize || nextProduct?.sizes?.[0] || '');
+        setSelectedColor(productDesign?.selectedColor || nextProduct?.colors?.[0] || '');
+        setActivePlacement((productDesign?.activePlacement as PrintPlacement) || 'front');
+        setPlacements(productDesign ? restorePlacementsFromDesign(productDesign) : createDefaultPlacements());
+        setCustomDesignId(productDesign?.id || '');
+        setSavedPreviewUrl(productDesign?.previewUrl || '');
+        setSavedDesign(productDesign);
+        setIsDesignSaved(Boolean(productDesign));
         setIsLoading(false);
       }
     }
@@ -199,6 +283,13 @@ export default function Customizer() {
       isMounted = false;
     };
   }, [resolvedProductId]);
+
+  useEffect(() => {
+    const matchesSavedDesign = doesCurrentDesignMatchSaved(placements, selectedSize, selectedColor, savedDesign);
+    setIsDesignSaved((currentValue) => (
+      currentValue === matchesSavedDesign ? currentValue : matchesSavedDesign
+    ));
+  }, [placements, selectedColor, selectedSize, savedDesign]);
 
   function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -283,7 +374,7 @@ export default function Customizer() {
       );
       const compressedPreviewByPlacement = Object.fromEntries(compressedEntries) as Partial<Record<PrintPlacement, string>>;
       const uploadedImageUrl = compressedPreviewByPlacement[primaryPlacement] || '';
-      const previewUrl = uploadedImageUrl || product.mockups?.front || product.image;
+      const previewUrl = uploadedImageUrl || getProductMockup(product, 'front', selectedColor || product.colors?.[0]);
       const usedPlacementIds = designedPlacements.map((placement) => placement.id);
       const placementData = printPlacements.reduce(
         (data, placement) => ({
@@ -336,6 +427,7 @@ export default function Customizer() {
       setCustomDesignId(nextCustomDesignId);
       setSavedPreviewUrl(design.previewUrl || previewUrl);
       setSavedDesign(design);
+      setPlacements(restorePlacementsFromDesign(design));
       setIsDesignSaved(true);
       toast.success('Design saved');
     } catch (error) {
@@ -369,8 +461,7 @@ export default function Customizer() {
     const previewUrl = savedDesign.previewUrl
       || savedPreviewUrl
       || savedDesign.uploadedImageUrl
-      || product.mockups?.front
-      || product.image;
+      || getProductMockup(product, 'front', selectedColor || product.colors?.[0]);
     const usedPlacements = savedDesign.usedPlacements?.length
       ? savedDesign.usedPlacements
       : printPlacements
@@ -442,7 +533,8 @@ export default function Customizer() {
   }
 
   const activePlacementMeta = printPlacements.find((placement) => placement.id === activePlacement) || printPlacements[0];
-  const productImage = product.mockups?.[activePlacementMeta.view] || product.images?.[0] || product.image;
+  const productImage = getProductMockup(product, activePlacementMeta.view, selectedColor || product.colors?.[0]);
+  const productImageFallback = getProductMockupFallback(product, activePlacementMeta.view);
   const printArea = resolvePlacementArea(product, activePlacement);
   const printAreaStyle = {
     left: `${printArea.x}%`,
@@ -519,7 +611,16 @@ export default function Customizer() {
               </div>
             ) : (
               <div className="relative w-full max-w-xs sm:max-w-md aspect-[3/4] bg-[#F5F5F5] border border-black/5 rounded-lg shadow-lg overflow-hidden">
-                <img src={productImage} alt={product.name} className="w-full h-full object-contain p-4" />
+                <img
+                  src={productImage}
+                  alt={product.name}
+                  onError={(event) => {
+                    if (event.currentTarget.src !== window.location.origin + productImageFallback) {
+                      event.currentTarget.src = productImageFallback;
+                    }
+                  }}
+                  className="w-full h-full object-contain p-4"
+                />
 
                 <div
                   className="absolute border-2 border-dashed border-[#7A1F2A] bg-[#7A1F2A]/5 overflow-hidden pointer-events-none"
