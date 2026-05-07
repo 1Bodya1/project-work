@@ -32,16 +32,21 @@ function isCustomizedItem(item: Order['items'][number]) {
       item.customDesignId ||
       item.previewUrl ||
       item.customImage ||
-      item.customDesignImage,
+      item.customDesignImage ||
+      item.customDesign?.previewUrl,
   );
 }
 
 function getCustomPreview(item: Order['items'][number]) {
-  return item.previewUrl || item.customDesignImage || item.customImage;
+  return item.previewUrl || item.customDesignImage || item.customImage || item.customDesign?.previewUrl || item.image;
 }
 
 function getUploadedDesignPreview(item: Order['items'][number]) {
-  return item.uploadedImageUrl || item.customImage || item.customDesignImage || item.previewUrl;
+  return item.uploadedImageUrl
+    || item.customImage
+    || item.customDesign?.uploadedImageUrl
+    || item.customDesignImage
+    || item.previewUrl;
 }
 
 function getUsedPlacementLabels(item: Order['items'][number]) {
@@ -61,16 +66,24 @@ export default function AdminOrders() {
   const [draftStatus, setDraftStatus] = useState<OrderStatus>('new');
   const [draftTrackingNumber, setDraftTrackingNumber] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     loadOrders();
   }, []);
 
   async function loadOrders() {
-    const nextOrders = await adminService.getOrders();
-    setOrders(nextOrders);
-    setSelectedOrderId((currentSelectedOrderId) => currentSelectedOrderId || nextOrders[0]?.id || null);
-    setIsLoading(false);
+    try {
+      const nextOrders = await adminService.getOrders();
+      setOrders(nextOrders);
+      setLoadError('');
+      setSelectedOrderId((currentSelectedOrderId) => currentSelectedOrderId || nextOrders[0]?.id || null);
+    } catch {
+      setOrders([]);
+      setLoadError('Unable to load admin orders.');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   const selectedOrder = useMemo(
@@ -88,22 +101,26 @@ export default function AdminOrders() {
   async function handleUpdateOrder() {
     if (!selectedOrder) return;
 
-    const updatedOrder = await adminService.updateOrder(selectedOrder.id, {
-      orderStatus: draftStatus,
-      status: draftStatus,
-      trackingNumber: draftTrackingNumber,
-      deliveryStatus: getDeliveryStatus(draftStatus, draftTrackingNumber),
-    });
+    try {
+      const updatedOrder = await adminService.updateOrder(selectedOrder.id, {
+        orderStatus: draftStatus,
+        status: draftStatus,
+        trackingNumber: draftTrackingNumber,
+        deliveryStatus: getDeliveryStatus(draftStatus, draftTrackingNumber),
+      });
 
-    if (!updatedOrder) {
+      if (!updatedOrder) {
+        toast.error('Unable to update order');
+        return;
+      }
+
+      setOrders((currentOrders) =>
+        currentOrders.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)),
+      );
+      toast.success('Order updated successfully!');
+    } catch {
       toast.error('Unable to update order');
-      return;
     }
-
-    setOrders((currentOrders) =>
-      currentOrders.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)),
-    );
-    toast.success('Order updated successfully!');
   }
 
   if (isLoading) {
@@ -125,7 +142,7 @@ export default function AdminOrders() {
         <div className="lg:col-span-2">
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">All Orders</h3>
-            <div className="overflow-x-auto">
+            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
               <table className="w-full min-w-[980px]">
                 <thead>
                   <tr className="border-b border-black/10">
@@ -141,7 +158,20 @@ export default function AdminOrders() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.length === 0 ? (
+                  {loadError ? (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center">
+                        <p className="text-red-600 mb-4">{loadError}</p>
+                        <button
+                          type="button"
+                          onClick={loadOrders}
+                          className="px-5 py-2.5 border border-black/10 rounded hover:bg-[#F5F5F5] transition-colors"
+                        >
+                          Retry
+                        </button>
+                      </td>
+                    </tr>
+                  ) : orders.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="py-8 text-center text-[#1A1A1A]">
                         No admin orders
@@ -161,7 +191,7 @@ export default function AdminOrders() {
                       <td className="py-4">
                         {order.items.some(isCustomizedItem) ? (
                           <span className="inline-block px-2 py-1 text-xs rounded bg-green-100 text-green-800">
-                            {order.items.filter(isCustomizedItem).length} item(s)
+                            Customized
                           </span>
                         ) : (
                           <span className="text-sm text-[#1A1A1A]">No</span>
@@ -195,7 +225,7 @@ export default function AdminOrders() {
 
         <div>
           {selectedOrder ? (
-            <div className="bg-white border border-black/10 rounded-lg p-6 sticky top-24 max-h-[calc(100vh-6rem)] overflow-y-auto">
+            <div className="bg-white border border-black/10 rounded-lg p-4 sm:p-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-6rem)] overflow-y-auto">
               <h3 className="mb-6">Order Details</h3>
 
               <div className="space-y-4 mb-6">
@@ -218,7 +248,7 @@ export default function AdminOrders() {
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-6">
-                <h4 className="mb-3">Products</h4>
+                <h4 className="mb-3">Ordered Products</h4>
                 {selectedOrder.items.map((item, index) => {
                   const customPreview = getCustomPreview(item);
                   const uploadedDesignPreview = getUploadedDesignPreview(item);
@@ -228,21 +258,34 @@ export default function AdminOrders() {
                   return (
                     <div key={`${selectedOrder.id}-${item.productId || item.name}-${index}`} className="mb-4">
                       <div className="flex gap-3 mb-3">
-                        <div className="w-16 h-16 bg-[#F5F5F5] rounded overflow-hidden">
-                          <img
-                            src={customPreview || item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-20 h-20 bg-[#F5F5F5] rounded overflow-hidden border border-black/5 flex-shrink-0">
+                          {customPreview ? (
+                            <img
+                              src={customPreview}
+                              alt={item.name}
+                              className="w-full h-full object-contain p-2"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs text-[#1A1A1A]">
+                              No preview
+                            </div>
+                          )}
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm mb-1">{item.name}</p>
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <p className="text-sm">{item.name}</p>
+                            {isCustomized && (
+                              <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">
+                                Customized
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-[#1A1A1A]">
                             Size: {item.size || '-'} • Color: {item.color || '-'} • x{item.quantity}
                           </p>
                           <p className="text-xs text-[#1A1A1A]">₴{item.price || 0}</p>
                           {isCustomized && (
-                            <p className="text-xs text-green-600 mt-1">Customized</p>
+                            <p className="text-xs text-green-600 mt-1">Custom design saved</p>
                           )}
                           {usedPlacements.length > 0 && (
                             <p className="text-xs text-[#1A1A1A] mt-1">
@@ -287,6 +330,10 @@ export default function AdminOrders() {
                             <p>
                               <span className="text-black">customDesignId:</span>{' '}
                               {item.customDesignId || '-'}
+                            </p>
+                            <p>
+                              <span className="text-black">Size:</span> {item.size || '-'}{' '}
+                              <span className="text-black">Color:</span> {item.color || '-'}
                             </p>
                             <p>
                               <span className="text-black">Used placements:</span>{' '}

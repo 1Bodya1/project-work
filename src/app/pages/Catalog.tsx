@@ -115,7 +115,7 @@ export default function Catalog() {
         {/* Filters Sidebar */}
         <aside
           className={`
-            fixed lg:static top-0 right-0 h-full lg:h-auto w-80 max-w-[85vw] lg:max-w-none lg:w-64 bg-white lg:bg-transparent
+            fixed lg:static top-0 right-0 h-full lg:h-auto w-80 max-w-[88vw] lg:max-w-none lg:w-64 bg-white lg:bg-transparent
             transform transition-transform duration-300 z-50 lg:z-0
             ${showFilters ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
             lg:flex-shrink-0
@@ -214,6 +214,12 @@ export default function Catalog() {
               className="w-full mt-6 py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors lg:hidden"
             >
               Apply Filters
+            </button>
+            <button
+              onClick={clearFilters}
+              className="w-full mt-3 py-3 border border-black/10 rounded hover:bg-[#F5F5F5] transition-colors lg:hidden"
+            >
+              Clear Filters
             </button>
           </div>
         </aside>

@@ -1,6 +1,4 @@
-import { mockOrders } from '../mocks/mockOrders';
 import { mockProducts } from '../mocks/mockProducts';
-import { mockSupportTickets } from '../mocks/mockSupportTickets';
 import { DESIGN_STORAGE_KEY } from './designService';
 import { ORDERS_STORAGE_KEY } from './orderService';
 import { SUPPORT_TICKETS_STORAGE_KEY } from './supportService';
@@ -11,6 +9,8 @@ type UpdateProductData = Partial<Omit<Product, 'id'>>;
 type UpdateOrderData = Partial<Pick<Order, 'orderStatus' | 'status' | 'trackingNumber' | 'deliveryStatus'>>;
 const PRODUCTS_STORAGE_KEY = 'solution_admin_products';
 const DELETED_PRODUCTS_STORAGE_KEY = 'solution_deleted_products';
+const LEGACY_DEMO_ORDER_IDS = new Set(['ORD-001', 'ORD-002', 'ORD-013', 'ORD-014', 'ORD-015']);
+const LEGACY_DEMO_TICKET_IDS = new Set(['SUP-006', 'SUP-007', 'SUP-008']);
 
 function readStoredProducts() {
   const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
@@ -49,7 +49,9 @@ function readStoredOrders() {
   if (!storedOrders) return [];
 
   try {
-    return JSON.parse(storedOrders) as Order[];
+    return (JSON.parse(storedOrders) as Order[]).filter(
+      (order) => !LEGACY_DEMO_ORDER_IDS.has(order.id),
+    );
   } catch {
     localStorage.removeItem(ORDERS_STORAGE_KEY);
     return [];
@@ -77,7 +79,9 @@ function readStoredSupportTickets() {
   if (!storedTickets) return [];
 
   try {
-    return JSON.parse(storedTickets) as SupportTicket[];
+    return (JSON.parse(storedTickets) as SupportTicket[]).filter(
+      (ticket) => !LEGACY_DEMO_TICKET_IDS.has(ticket.id),
+    );
   } catch {
     localStorage.removeItem(SUPPORT_TICKETS_STORAGE_KEY);
     return [];
@@ -89,11 +93,7 @@ function writeStoredSupportTickets(tickets: SupportTicket[]) {
 }
 
 function getAllSupportTickets() {
-  const storedTickets = readStoredSupportTickets();
-  const storedTicketIds = new Set(storedTickets.map((ticket) => ticket.id));
-  const availableMockTickets = mockSupportTickets.filter((ticket) => !storedTicketIds.has(ticket.id));
-
-  return [...storedTickets, ...availableMockTickets];
+  return readStoredSupportTickets();
 }
 
 function normalizeOrder(order: Order): Order {
@@ -159,13 +159,7 @@ function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): Or
 }
 
 async function getAllOrders() {
-  const storedOrders = readStoredOrders().map(normalizeOrder);
-  const storedOrderIds = new Set(storedOrders.map((order) => order.id));
-  const availableMockOrders = mockOrders
-    .filter((order) => !storedOrderIds.has(order.id))
-    .map(normalizeOrder);
-
-  return [...storedOrders, ...availableMockOrders];
+  return readStoredOrders().map(normalizeOrder);
 }
 
 async function updateOrder(id: string, data: UpdateOrderData) {

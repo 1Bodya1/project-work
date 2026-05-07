@@ -16,16 +16,24 @@ export default function AdminSupportTickets() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<TicketStatus>('new');
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     loadTickets();
   }, []);
 
   async function loadTickets() {
-    const nextTickets = await adminService.getSupportTickets();
-    setTickets(nextTickets);
-    setSelectedTicketId((currentSelectedTicketId) => currentSelectedTicketId || nextTickets[0]?.id || null);
-    setIsLoading(false);
+    try {
+      const nextTickets = await adminService.getSupportTickets();
+      setTickets(nextTickets);
+      setLoadError('');
+      setSelectedTicketId((currentSelectedTicketId) => currentSelectedTicketId || nextTickets[0]?.id || null);
+    } catch {
+      setTickets([]);
+      setLoadError('Unable to load support tickets.');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   const selectedTicket = useMemo(
@@ -41,16 +49,20 @@ export default function AdminSupportTickets() {
   async function handleUpdateStatus() {
     if (!selectedTicket) return;
 
-    const updatedTicket = await adminService.updateSupportTicketStatus(selectedTicket.id, draftStatus);
-    if (!updatedTicket) {
-      toast.error('Unable to update support ticket');
-      return;
-    }
+    try {
+      const updatedTicket = await adminService.updateSupportTicketStatus(selectedTicket.id, draftStatus);
+      if (!updatedTicket) {
+        toast.error('Unable to update support ticket');
+        return;
+      }
 
-    setTickets((currentTickets) =>
-      currentTickets.map((ticket) => (ticket.id === updatedTicket.id ? updatedTicket : ticket)),
-    );
-    toast.success('Support ticket updated successfully');
+      setTickets((currentTickets) =>
+        currentTickets.map((ticket) => (ticket.id === updatedTicket.id ? updatedTicket : ticket)),
+      );
+      toast.success('Support ticket updated successfully');
+    } catch {
+      toast.error('Unable to update support ticket');
+    }
   }
 
   if (isLoading) {
@@ -72,7 +84,7 @@ export default function AdminSupportTickets() {
         <div className="lg:col-span-2">
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">All Tickets</h3>
-            <div className="overflow-x-auto">
+            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
               <table className="w-full min-w-[860px]">
                 <thead>
                   <tr className="border-b border-black/10">
@@ -80,16 +92,31 @@ export default function AdminSupportTickets() {
                     <th className="text-left pb-3 text-sm">User</th>
                     <th className="text-left pb-3 text-sm">Order Number</th>
                     <th className="text-left pb-3 text-sm">Subject</th>
+                    <th className="text-left pb-3 text-sm">Message</th>
                     <th className="text-left pb-3 text-sm">Date</th>
                     <th className="text-left pb-3 text-sm">Status</th>
                     <th className="text-left pb-3 text-sm">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.length === 0 ? (
+                  {loadError ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-[#1A1A1A]">
-                        No support tickets
+                      <td colSpan={8} className="py-8 text-center">
+                        <p className="text-red-600 mb-4">{loadError}</p>
+                        <button
+                          type="button"
+                          onClick={loadTickets}
+                          className="px-5 py-2.5 border border-black/10 rounded hover:bg-[#F5F5F5] transition-colors"
+                        >
+                          Retry
+                        </button>
+                      </td>
+                    </tr>
+                  ) : tickets.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center">
+                        <h4 className="mb-2">No support tickets</h4>
+                        <p className="text-[#1A1A1A]">Customer support requests will appear here.</p>
                       </td>
                     </tr>
                   ) : tickets.map((ticket) => (
@@ -104,6 +131,9 @@ export default function AdminSupportTickets() {
                       <td className="py-4 text-[#1A1A1A]">{ticket.customer.name}</td>
                       <td className="py-4 text-[#1A1A1A]">{ticket.orderNumber || '-'}</td>
                       <td className="py-4">{ticket.subject}</td>
+                      <td className="py-4 text-[#1A1A1A] max-w-[240px]">
+                        <span className="line-clamp-2">{ticket.message}</span>
+                      </td>
                       <td className="py-4 text-[#1A1A1A]">{ticket.date}</td>
                       <td className="py-4">
                         <StatusBadge status={ticket.status} size="sm" />
@@ -128,7 +158,7 @@ export default function AdminSupportTickets() {
 
         <div>
           {selectedTicket ? (
-            <div className="bg-white border border-black/10 rounded-lg p-6 sticky top-24 max-h-[calc(100vh-6rem)] overflow-y-auto">
+            <div className="bg-white border border-black/10 rounded-lg p-4 sm:p-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-6rem)] overflow-y-auto">
               <h3 className="mb-6">Ticket Details</h3>
 
               <div className="space-y-4 mb-6">
@@ -175,6 +205,9 @@ export default function AdminSupportTickets() {
                     </option>
                   ))}
                 </select>
+                <div className="mt-3">
+                  <StatusBadge status={draftStatus} size="sm" />
+                </div>
               </div>
 
               <button
@@ -187,7 +220,9 @@ export default function AdminSupportTickets() {
             </div>
           ) : (
             <div className="bg-white border border-black/10 rounded-lg p-6 text-center text-[#1A1A1A]">
-              Select a ticket to view details
+              {tickets.length === 0
+                ? 'Customer support requests will appear here.'
+                : 'Select a ticket to view details'}
             </div>
           )}
         </div>

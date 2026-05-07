@@ -53,6 +53,7 @@ export default function Profile() {
   const { user, logout, loadMe } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  const [ordersError, setOrdersError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<ProfileForm>({
     firstName: '',
@@ -76,6 +77,10 @@ export default function Profile() {
       try {
         const nextOrders = await orderService.getMyOrders();
         setOrders(nextOrders.slice(0, 2));
+        setOrdersError('');
+      } catch {
+        setOrders([]);
+        setOrdersError('Unable to load recent orders.');
       } finally {
         setIsLoadingOrders(false);
       }
@@ -218,6 +223,16 @@ export default function Profile() {
             {isLoadingOrders ? (
               <div className="text-center py-12 text-[#1A1A1A]">
                 Loading profile orders...
+              </div>
+            ) : ordersError ? (
+              <div className="text-center py-12">
+                <p className="text-red-600 mb-4">{ordersError}</p>
+                <Link
+                  to="/orders"
+                  className="inline-block px-6 py-3 border border-black/10 rounded hover:bg-[#F5F5F5] transition-colors"
+                >
+                  Open orders
+                </Link>
               </div>
             ) : orders.length === 0 ? (
               <div className="text-center py-12">

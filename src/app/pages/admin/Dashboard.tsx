@@ -42,17 +42,24 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     async function loadDashboardData() {
-      const [nextOrders, nextSupportTickets] = await Promise.all([
-        adminService.getOrders(),
-        adminService.getSupportTickets(),
-      ]);
+      try {
+        const [nextOrders, nextSupportTickets] = await Promise.all([
+          adminService.getOrders(),
+          adminService.getSupportTickets(),
+        ]);
 
-      setOrders(nextOrders);
-      setSupportTickets(nextSupportTickets);
-      setIsLoading(false);
+        setOrders(nextOrders);
+        setSupportTickets(nextSupportTickets);
+        setErrorMessage('');
+      } catch {
+        setErrorMessage('Unable to load dashboard data.');
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     loadDashboardData();
@@ -96,6 +103,24 @@ export default function AdminDashboard() {
     );
   }
 
+  if (errorMessage) {
+    return (
+      <div>
+        <h1 className="text-4xl mb-8">Dashboard</h1>
+        <div className="bg-white border border-black/10 rounded-lg p-8 text-center">
+          <p className="text-red-600 mb-4">{errorMessage}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
+          >
+            Reload dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h1 className="text-4xl mb-8">Dashboard</h1>
@@ -120,7 +145,7 @@ export default function AdminDashboard() {
 
       <div className="bg-white border border-black/10 rounded-lg p-6">
         <h3 className="mb-6">Recent Orders</h3>
-        <div className="overflow-x-auto">
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-black/10">
@@ -134,7 +159,13 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {recentOrders.map((order) => (
+              {recentOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-[#1A1A1A]">
+                    No admin orders
+                  </td>
+                </tr>
+              ) : recentOrders.map((order) => (
                 <tr key={order.id} className="border-b border-black/10">
                   <td className="py-4">{order.id}</td>
                   <td className="py-4">{getCustomerName(order)}</td>

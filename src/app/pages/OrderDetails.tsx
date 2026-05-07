@@ -24,6 +24,25 @@ function buildDeliveryTimeline(order: Order): OrderTimelineStep[] {
   }));
 }
 
+function getItemPreview(item: Order['items'][number]) {
+  return item.previewUrl
+    || item.customImage
+    || item.customDesignImage
+    || item.customDesign?.previewUrl
+    || item.image;
+}
+
+function isCustomizedItem(item: Order['items'][number]) {
+  return Boolean(
+    item.hasCustomDesign
+    || item.customDesignId
+    || item.previewUrl
+    || item.customImage
+    || item.customDesignImage
+    || item.customDesign?.previewUrl,
+  );
+}
+
 export default function OrderDetails() {
   const { orderId } = useParams();
   const [order, setOrder] = useState<Order | null>(null);
@@ -128,22 +147,53 @@ export default function OrderDetails() {
             <h3 className="mb-6">Products</h3>
             <div className="space-y-4">
               {order.items.map((item, index) => {
-                const customPreview = item.customImage || item.customDesignImage;
+                const preview = getItemPreview(item);
+                const isCustomized = isCustomizedItem(item);
 
                 return (
-                  <div key={`${item.name}-${index}`} className="flex gap-4 pb-4 border-b border-black/10 last:border-0">
-                    <div className="w-24 h-24 bg-[#F5F5F5] rounded overflow-hidden relative flex-shrink-0">
-                      <img src={customPreview || item.image} alt={item.name} className="w-full h-full object-cover" />
+                  <div key={`${item.name}-${index}`} className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-black/10 last:border-0">
+                    <div className="w-full sm:w-28 h-32 sm:h-28 bg-[#F5F5F5] rounded overflow-hidden border border-black/5 flex-shrink-0">
+                      {preview ? (
+                        <img src={preview} alt={item.name} className="w-full h-full object-contain p-2" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-[#1A1A1A]">
+                          No preview
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="mb-1">{item.name}</h4>
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <h4>{item.name}</h4>
+                        {isCustomized && (
+                          <span className="text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            Custom design saved
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-[#1A1A1A] mb-2">
                         Size: {item.size || '-'} • Color: {item.color || '-'}
                       </p>
-                      {customPreview && (
-                        <p className="text-sm text-green-600 mb-2 flex items-center gap-1">
-                          <Check className="w-4 h-4" />
-                          Custom design applied
+                      {item.customDesignId && (
+                        <p className="text-xs text-[#1A1A1A] mb-2">
+                          Design ID: {item.customDesignId}
+                        </p>
+                      )}
+                      {item.usedPlacements?.length ? (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {item.usedPlacements.map((placement) => (
+                            <span
+                              key={placement}
+                              className="text-xs px-2 py-1 bg-[#F5F5F5] border border-black/10 rounded"
+                            >
+                              {placement}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {!isCustomized && (
+                        <p className="text-sm text-[#1A1A1A] mb-2">
+                          No customization
                         </p>
                       )}
                       <p className="text-sm text-[#1A1A1A]">

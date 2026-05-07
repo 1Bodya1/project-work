@@ -78,6 +78,7 @@ export default function AdminProducts() {
   const [formData, setFormData] = useState<ProductFormData>(emptyFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     loadProducts();
@@ -87,6 +88,10 @@ export default function AdminProducts() {
     try {
       const nextProducts = await adminService.getProducts();
       setProducts(nextProducts);
+      setLoadError('');
+    } catch {
+      setProducts([]);
+      setLoadError('Unable to load products.');
     } finally {
       setIsLoading(false);
     }
@@ -146,16 +151,20 @@ export default function AdminProducts() {
 
     const productData = buildProductData();
 
-    if (editingProductId) {
-      await adminService.updateProduct(editingProductId, productData);
-      toast.success('Product updated successfully');
-    } else {
-      await adminService.createProduct(productData);
-      toast.success('Product created successfully');
-    }
+    try {
+      if (editingProductId) {
+        await adminService.updateProduct(editingProductId, productData);
+        toast.success('Product updated successfully');
+      } else {
+        await adminService.createProduct(productData);
+        toast.success('Product created successfully');
+      }
 
-    await loadProducts();
-    resetForm();
+      await loadProducts();
+      resetForm();
+    } catch {
+      toast.error('Unable to save product. Please try again.');
+    }
   }
 
   function handleEditProduct(product: Product) {
@@ -166,9 +175,13 @@ export default function AdminProducts() {
   }
 
   async function handleDeleteProduct(productId: string) {
-    await adminService.deleteProduct(productId);
-    await loadProducts();
-    toast.success('Product deleted successfully');
+    try {
+      await adminService.deleteProduct(productId);
+      await loadProducts();
+      toast.success('Product deleted successfully');
+    } catch {
+      toast.error('Unable to delete product. Please try again.');
+    }
   }
 
   function handleImagesUpload(files: FileList | null) {
@@ -207,7 +220,7 @@ export default function AdminProducts() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <h1 className="text-4xl">Products</h1>
         <button
           onClick={() => {
@@ -218,7 +231,7 @@ export default function AdminProducts() {
               setErrors({});
             }
           }}
-          className="px-6 py-3 bg-[#7A1F2A] text-white rounded flex items-center gap-2 hover:bg-[#5A1520] transition-colors"
+          className="w-full sm:w-auto px-6 py-3 bg-[#7A1F2A] text-white rounded flex items-center justify-center gap-2 hover:bg-[#5A1520] transition-colors"
         >
           <Plus className="w-5 h-5" />
           Add Product
@@ -412,7 +425,7 @@ export default function AdminProducts() {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex flex-col sm:flex-row gap-3 mt-6">
               <button
                 type="submit"
                 className="px-6 py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors"
@@ -433,7 +446,7 @@ export default function AdminProducts() {
 
       <div className="bg-white border border-black/10 rounded-lg p-6">
         <h3 className="mb-6">All Products</h3>
-        <div className="overflow-x-auto">
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <table className="w-full min-w-[860px]">
             <thead>
               <tr className="border-b border-black/10">
@@ -451,6 +464,19 @@ export default function AdminProducts() {
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-[#1A1A1A]">
                     Loading products...
+                  </td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center">
+                    <p className="text-red-600 mb-4">{loadError}</p>
+                    <button
+                      type="button"
+                      onClick={loadProducts}
+                      className="px-5 py-2.5 border border-black/10 rounded hover:bg-[#F5F5F5] transition-colors"
+                    >
+                      Retry
+                    </button>
                   </td>
                 </tr>
               ) : products.length === 0 ? (

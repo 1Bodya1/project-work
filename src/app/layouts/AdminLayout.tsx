@@ -1,8 +1,11 @@
-import { Link, Outlet, useLocation } from 'react-router';
-import { LayoutDashboard, Package, ShoppingCart, MessageSquare, LogOut } from 'lucide-react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
+import { Home, LayoutDashboard, LogOut, MessageSquare, Package, ShoppingCart } from 'lucide-react';
+import { useAuth } from '../store/AuthContext';
 
 export default function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const navItems = [
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
@@ -17,6 +20,11 @@ export default function AdminLayout() {
     }
     return location.pathname.startsWith(path);
   };
+
+  async function handleLogout() {
+    await logout();
+    navigate('/login', { replace: true });
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F5F5]">
@@ -49,14 +57,22 @@ export default function AdminLayout() {
             </ul>
           </nav>
 
-          <div className="hidden lg:block p-4 border-t border-black/10">
+          <div className="p-4 border-t border-black/10 flex lg:block gap-2 overflow-x-auto">
             <Link
               to="/"
-              className="flex items-center gap-3 px-4 py-3 rounded text-[#1A1A1A] hover:bg-[#F5F5F5] transition-colors"
+              className="flex items-center gap-3 px-4 py-3 rounded text-[#1A1A1A] hover:bg-[#F5F5F5] transition-colors whitespace-nowrap"
+            >
+              <Home className="w-5 h-5" />
+              Back to store
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-4 py-3 rounded text-[#1A1A1A] hover:bg-[#F5F5F5] transition-colors whitespace-nowrap w-full text-left"
             >
               <LogOut className="w-5 h-5" />
-              Exit Admin
-            </Link>
+              Logout
+            </button>
           </div>
         </aside>
 

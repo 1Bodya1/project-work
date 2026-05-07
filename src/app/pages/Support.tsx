@@ -20,7 +20,7 @@ export default function Support() {
     message: '',
   });
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Partial<Record<keyof SupportForm | 'form', string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -37,14 +37,19 @@ export default function Support() {
       ...currentFormData,
       [field]: value,
     }));
+    setErrors((currentErrors) => ({ ...currentErrors, [field]: '' }));
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError('');
+    setErrors({});
 
-    if (!formData.subject.trim() || !formData.message.trim()) {
-      setError('Subject and message are required.');
+    const nextErrors: Partial<Record<keyof SupportForm, string>> = {};
+    if (!formData.subject.trim()) nextErrors.subject = 'Subject is required';
+    if (!formData.message.trim()) nextErrors.message = 'Message is required';
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       return;
     }
 
@@ -55,6 +60,8 @@ export default function Support() {
         subject: formData.subject.trim(),
         orderNumber: formData.orderNumber.trim() || undefined,
         message: formData.message.trim(),
+        userId: user?.id,
+        userEmail: user?.email || 'customer@example.com',
         customer: {
           name: user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Solution customer',
           email: user?.email || 'customer@example.com',
@@ -65,7 +72,7 @@ export default function Support() {
       setFormData({ subject: '', orderNumber: '', message: '' });
       toast.success('Your support request has been created');
     } catch {
-      setError('Unable to create support request. Please try again.');
+      setErrors({ form: 'Unable to create support request. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -84,7 +91,7 @@ export default function Support() {
             <h3 className="mb-6">Submit a Support Request</h3>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {errors.form && <p className="text-sm text-red-600">{errors.form}</p>}
 
               <div>
                 <label className="block mb-2">Subject</label>
@@ -95,6 +102,7 @@ export default function Support() {
                   className="w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
                   placeholder="Brief description of your issue"
                 />
+                {errors.subject && <p className="text-sm text-red-600 mt-1">{errors.subject}</p>}
               </div>
 
               <div>
@@ -117,6 +125,7 @@ export default function Support() {
                   className="w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A] resize-none"
                   placeholder="Please describe your issue in detail..."
                 />
+                {errors.message && <p className="text-sm text-red-600 mt-1">{errors.message}</p>}
               </div>
 
               <button
@@ -137,7 +146,10 @@ export default function Support() {
                 <div className="w-16 h-16 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-4">
                   <Package className="w-8 h-8 text-[#1A1A1A]" />
                 </div>
-                <p className="text-[#1A1A1A]">No support requests yet</p>
+                <h4 className="mb-2">No support requests yet</h4>
+                <p className="text-[#1A1A1A]">
+                  Your support requests will appear here after you submit a ticket.
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -150,6 +162,7 @@ export default function Support() {
                           {ticket.orderNumber ? `Order: ${ticket.orderNumber}` : 'No order number'}
                         </p>
                         <p className="text-sm text-[#1A1A1A]">{ticket.date}</p>
+                        <p className="text-sm text-[#1A1A1A] mt-2 line-clamp-2">{ticket.message}</p>
                       </div>
                       <StatusBadge status={ticket.status} size="sm" />
                     </div>

@@ -67,15 +67,22 @@ export interface CustomDesign {
   rotation: number;
   selectedColor?: string;
   selectedSize?: string;
+  activePlacement?: string;
+  previewMode?: '2d' | '3d';
   placements?: Record<string, CustomDesignPlacement>;
+  usedPlacements?: string[];
   canvasState?: unknown;
+  createdAt?: string;
 }
 
 export interface CustomDesignPlacement {
   uploadedImage: string | null;
+  uploadedImageUrl?: string | null;
+  previewUrl?: string | null;
   position: { x: number; y: number };
   scale: number;
   rotation: number;
+  isActive?: boolean;
   label?: string;
   view?: string;
   printArea?: {
@@ -129,6 +136,7 @@ export interface OrderItem {
   color?: string;
   quantity: number;
   price?: number;
+  isCustomized?: boolean;
   hasCustomDesign?: boolean;
   designPosition?: { x: number; y: number };
   designScale?: number;
@@ -154,9 +162,12 @@ export interface OrderTimelineStep {
 
 export interface Order {
   id: string;
+  orderNumber?: string;
   date: string;
+  subtotal?: number;
   total: number;
   paymentStatus: PaymentStatus;
+  paymentMethod?: string;
   paymentProvider?: string;
   status?: OrderStatus;
   orderStatus?: OrderStatus;
@@ -170,10 +181,13 @@ export interface Order {
 
 export interface SupportTicket {
   id: string;
+  userId?: string;
+  userEmail?: string;
   subject: string;
   orderNumber?: string;
   customer: { name: string; email: string };
   date: string;
+  createdAt?: string;
   status: TicketStatus;
   message: string;
 }

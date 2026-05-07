@@ -19,8 +19,8 @@ function updateStoredOrderPaymentStatus(orderId: string, paymentStatus: PaymentS
             ? {
                 ...order,
                 paymentStatus,
-                orderStatus: paymentStatus === 'paid' ? 'paid' : order.orderStatus,
-                status: paymentStatus === 'paid' ? 'paid' : order.status,
+                orderStatus: order.orderStatus,
+                status: order.status,
               }
             : order,
         ),

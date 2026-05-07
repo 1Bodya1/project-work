@@ -3,15 +3,26 @@ import { Minus, Plus, X, Edit2, ShoppingBag, Check } from 'lucide-react';
 import { useCart } from '../store/CartContext';
 import type { CartItem } from '../types';
 
+const placementLabels: Record<string, string> = {
+  front: 'Front',
+  back: 'Back',
+  leftSleeve: 'Left sleeve',
+  rightSleeve: 'Right sleeve',
+  leftSide: 'Left side',
+  rightSide: 'Right side',
+};
+
 function getUsedPlacementLabels(item: CartItem) {
-  if (item.usedPlacements?.length) return item.usedPlacements;
+  if (item.usedPlacements?.length) {
+    return item.usedPlacements.map((placement) => placementLabels[placement] || placement);
+  }
 
   const placements = item.customDesignPlacements || item.customDesign?.placements;
   if (!placements) return [];
 
-  return Object.values(placements)
-    .filter((placement) => placement.uploadedImage)
-    .map((placement) => placement.label || 'Placement');
+  return Object.entries(placements)
+    .filter(([, placement]) => placement.uploadedImage || placement.uploadedImageUrl || placement.previewUrl)
+    .map(([placementId, placement]) => placement.label || placementLabels[placementId] || 'Placement');
 }
 
 export default function Cart() {
@@ -22,8 +33,9 @@ export default function Cart() {
   };
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shipping = subtotal > 1000 ? 0 : 50;
-  const total = subtotal + shipping;
+  const deliveryPlaceholder = 'Calculated at checkout';
+  const total = subtotal;
+  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
   if (isLoading) {
     return (
@@ -66,97 +78,120 @@ export default function Cart() {
               {(() => {
                 const usedPlacements = getUsedPlacementLabels(item);
 
-                return (
-              <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
-                <div className="w-full sm:w-32 h-32 bg-[#F5F5F5] rounded overflow-hidden flex-shrink-0 relative">
-                  <img
-                    src={item.previewUrl || item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                  />
-                  {item.customImage && item.previewUrl !== item.customImage && (
-                    <div className="absolute inset-0 bg-white/90 flex items-center justify-center p-4">
-                      <img
-                        src={item.customImage}
-                        alt="Custom design"
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                  )}
-                </div>
+                const previewImage = item.previewUrl || item.customImage || item.image;
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="mb-1 truncate">{item.title}</h3>
-                      <p className="text-sm text-[#1A1A1A]">
-                        Size: {item.size} • Color: {item.color}
-                      </p>
-                      <p className="text-sm text-[#1A1A1A] mt-1">Price: ₴{item.price}</p>
-                      {item.isCustomized ? (
-                        <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
-                          <Check className="w-4 h-4" />
-                          Custom design saved
-                        </p>
+                return (
+                  <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
+                    <div className="w-full sm:w-36 h-40 sm:h-36 bg-[#F5F5F5] rounded overflow-hidden flex-shrink-0 border border-black/5">
+                      {previewImage ? (
+                        <img
+                          src={previewImage}
+                          alt={item.title}
+                          className="w-full h-full object-contain p-3"
+                        />
                       ) : (
-                        <p className="text-sm text-[#1A1A1A] mt-1">No customization</p>
-                      )}
-                      {usedPlacements.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-xs text-[#1A1A1A] mb-1">Print areas:</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {usedPlacements.map((placement) => (
-                              <span
-                                key={placement}
-                                className="text-xs px-2 py-1 bg-[#F5F5F5] border border-black/10 rounded"
-                              >
-                                {placement}
-                              </span>
-                            ))}
-                          </div>
+                        <div className="w-full h-full flex items-center justify-center text-sm text-[#1A1A1A]">
+                          No preview
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="text-[#1A1A1A] hover:text-red-600 transition-colors ml-2"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => updateQuantity(item.id, item.quantity, -1)}
-                        className="w-8 h-8 border border-black/10 rounded flex items-center justify-center hover:bg-[#F5F5F5]"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </button>
-                      <span className="w-8 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(item.id, item.quantity, 1)}
-                        className="w-8 h-8 border border-black/10 rounded flex items-center justify-center hover:bg-[#F5F5F5]"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                            <h3 className="truncate">{item.title}</h3>
+                            {item.isCustomized ? (
+                              <span className="w-fit text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5" />
+                                Custom design saved
+                              </span>
+                            ) : (
+                              <span className="w-fit text-xs px-2 py-1 rounded-full bg-[#F5F5F5] text-[#1A1A1A] border border-black/10">
+                                No customization
+                              </span>
+                            )}
+                          </div>
 
-                    <div className="flex items-center gap-3">
-                      {item.isCustomized && (
-                        <Link
-                          to={`/customize/${item.productId}`}
-                          className="text-sm text-[#7A1F2A] hover:underline flex items-center gap-1"
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm text-[#1A1A1A]">
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-black/50">Size</p>
+                              <p>{item.size}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-black/50">Color</p>
+                              <p>{item.color}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-black/50">Price</p>
+                              <p>₴{item.price}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-black/50">Item total</p>
+                              <p>₴{item.price * item.quantity}</p>
+                            </div>
+                          </div>
+
+                          {usedPlacements.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs text-[#1A1A1A] mb-1">Print areas:</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {usedPlacements.map((placement) => (
+                                  <span
+                                    key={placement}
+                                    className="text-xs px-2 py-1 bg-[#F5F5F5] border border-black/10 rounded"
+                                  >
+                                    {placement}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => removeItem(item.id)}
+                          className="text-[#1A1A1A] hover:text-red-600 transition-colors"
+                          aria-label={`Remove ${item.title}`}
                         >
-                          <Edit2 className="w-4 h-4" />
-                          Edit design
-                        </Link>
-                      )}
-                      <p className="text-lg md:text-xl">₴{item.price * item.quantity}</p>
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-5">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity, -1)}
+                            className="w-8 h-8 border border-black/10 rounded flex items-center justify-center hover:bg-[#F5F5F5]"
+                            aria-label="Decrease quantity"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className="w-8 text-center">{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity, 1)}
+                            className="w-8 h-8 border border-black/10 rounded flex items-center justify-center hover:bg-[#F5F5F5]"
+                            aria-label="Increase quantity"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-4">
+                          {item.isCustomized && (
+                            <Link
+                              to={`/customize/${item.productId}`}
+                              className="text-sm text-[#7A1F2A] hover:underline flex items-center gap-1"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                              Edit design
+                            </Link>
+                          )}
+                          <p className="text-lg md:text-xl">₴{item.price * item.quantity}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
                 );
               })()}
             </div>
@@ -164,23 +199,18 @@ export default function Cart() {
         </div>
 
         <div>
-          <div className="bg-white border border-black/10 rounded-lg p-6 sticky top-24">
+          <div className="bg-white border border-black/10 rounded-lg p-4 sm:p-6 lg:sticky lg:top-24">
             <h3 className="mb-4">Order Summary</h3>
 
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-[#1A1A1A]">
-                <span>Subtotal ({items.reduce((sum, item) => sum + item.quantity, 0)} items)</span>
+                <span>Subtotal ({totalItems} items)</span>
                 <span>₴{subtotal}</span>
               </div>
               <div className="flex justify-between text-[#1A1A1A]">
-                <span>Shipping</span>
-                <span>{shipping === 0 ? 'Free' : `₴${shipping}`}</span>
+                <span>Delivery</span>
+                <span>{deliveryPlaceholder}</span>
               </div>
-              {shipping > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
-                  Add ₴{1000 - subtotal} more for free shipping
-                </div>
-              )}
             </div>
 
             <div className="border-t border-black/10 pt-4 mb-6">

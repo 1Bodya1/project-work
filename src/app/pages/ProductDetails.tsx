@@ -78,22 +78,28 @@ export default function ProductDetails() {
       return;
     }
 
-    await addItem({
-      productId: product.id,
-      title: product.name,
-      name: product.name,
-      image: product.image,
-      previewUrl: product.image,
-      size: selectedSize,
-      color: selectedColor,
-      quantity,
-      price: product.price,
-      isCustomized: false,
-      hasCustomDesign: false,
-    });
+    try {
+      await addItem({
+        productId: product.id,
+        title: product.name,
+        name: product.name,
+        image: product.image,
+        previewUrl: product.image,
+        size: selectedSize,
+        color: selectedColor,
+        quantity,
+        price: product.price,
+        isCustomized: false,
+        hasCustomDesign: false,
+      });
 
-    setErrorMessage('');
-    toast.success('Product added to cart');
+      setErrorMessage('');
+      toast.success('Product added to cart');
+    } catch {
+      const message = 'Unable to add product to cart. Please try again.';
+      setErrorMessage(message);
+      toast.error(message);
+    }
   }
 
   if (isLoading) {
@@ -134,7 +140,7 @@ export default function ProductDetails() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
         <div>
           <div className="aspect-square bg-[#F5F5F5] border border-black/5 shadow-sm rounded overflow-hidden mb-4">
             <img
@@ -143,12 +149,12 @@ export default function ProductDetails() {
               className="w-full h-full object-contain p-6"
             />
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
             {productImages.map((image, index) => (
               <button
                 key={`${image}-${index}`}
                 onClick={() => setSelectedImage(image)}
-                className={`aspect-square bg-[#F5F5F5] border border-black/5 rounded overflow-hidden cursor-pointer hover:opacity-75 transition-opacity ${
+                className={`w-20 h-20 sm:w-auto sm:h-auto sm:aspect-square flex-shrink-0 bg-[#F5F5F5] border border-black/5 rounded overflow-hidden cursor-pointer hover:opacity-75 transition-opacity ${
                   selectedImage === image ? 'ring-2 ring-[#7A1F2A]' : ''
                 }`}
               >

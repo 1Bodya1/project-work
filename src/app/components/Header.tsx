@@ -21,7 +21,7 @@ export function Header() {
     <header className="border-b border-black/10 bg-white sticky top-0 z-50">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-20">
-          <Link to="/" className="text-2xl tracking-tight">
+          <Link to="/" className="text-2xl tracking-tight flex-shrink-0">
             Solution.
           </Link>
 
@@ -40,7 +40,7 @@ export function Header() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <Link to="/cart" className="hover:text-[#7A1F2A] transition-colors relative">
               <ShoppingCart className="w-5 h-5" />
               <span className="absolute -top-2 -right-2 bg-[#7A1F2A] text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
@@ -105,8 +105,12 @@ export function Header() {
             )}
 
             <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              onClick={() => {
+                setIsMenuOpen(!isMenuOpen);
+                setIsProfileOpen(false);
+              }}
               className="md:hidden hover:text-[#7A1F2A] transition-colors"
+              aria-label="Toggle menu"
             >
               {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -114,32 +118,32 @@ export function Header() {
         </div>
 
         {isMenuOpen && (
-          <nav className="md:hidden border-t border-black/10 py-4 max-h-[calc(100vh-5rem)] overflow-y-auto">
-            <div className="flex flex-col gap-4">
+          <nav className="md:hidden absolute left-0 right-0 top-20 bg-white border-t border-b border-black/10 shadow-lg max-h-[calc(100vh-5rem)] overflow-y-auto">
+            <div className="container mx-auto px-4 py-4 flex flex-col gap-2">
               <Link
                 to="/"
-                className="hover:text-[#7A1F2A] transition-colors"
+                className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Home
               </Link>
               <Link
                 to="/catalog"
-                className="hover:text-[#7A1F2A] transition-colors"
+                className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Catalog
               </Link>
               <Link
                 to="/about"
-                className="hover:text-[#7A1F2A] transition-colors"
+                className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 About
               </Link>
               <Link
                 to="/support"
-                className="hover:text-[#7A1F2A] transition-colors"
+                className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Support
@@ -148,14 +152,14 @@ export function Header() {
                 <>
                   <Link
                     to="/profile"
-                    className="hover:text-[#7A1F2A] transition-colors"
+                    className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Profile
                   </Link>
                   <Link
                     to="/orders"
-                    className="hover:text-[#7A1F2A] transition-colors"
+                    className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Orders
@@ -163,7 +167,7 @@ export function Header() {
                   {isAdmin && (
                     <Link
                       to="/admin"
-                      className="hover:text-[#7A1F2A] transition-colors"
+                      className="px-2 py-3 rounded hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Admin
@@ -172,7 +176,7 @@ export function Header() {
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="text-left hover:text-[#7A1F2A] transition-colors"
+                    className="px-2 py-3 rounded text-left hover:bg-[#F5F5F5] hover:text-[#7A1F2A] transition-colors"
                   >
                     Logout
                   </button>

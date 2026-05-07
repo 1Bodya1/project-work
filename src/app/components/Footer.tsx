@@ -17,22 +17,17 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li>
                 <Link to="/catalog" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  All Products
+                  Catalog
                 </Link>
               </li>
               <li>
-                <Link to="/catalog?category=t-shirts" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  T-Shirts
+                <Link to="/cart" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  Cart
                 </Link>
               </li>
               <li>
-                <Link to="/catalog?category=hoodies" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  Hoodies
-                </Link>
-              </li>
-              <li>
-                <Link to="/catalog?category=sweatshirts" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  Sweatshirts
+                <Link to="/checkout" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  Checkout
                 </Link>
               </li>
             </ul>
@@ -43,7 +38,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li>
                 <Link to="/support" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
-                  Contact Us
+                  Support
                 </Link>
               </li>
               <li>
@@ -60,10 +55,24 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="mb-4">MVP</h4>
-            <p className="text-sm text-[#1A1A1A]">
-              Catalog, customization, checkout, tracking, support, and admin tools.
-            </p>
+            <h4 className="mb-4">Project</h4>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <Link to="/" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  Home
+                </Link>
+              </li>
+              <li>
+                <Link to="/about" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  About
+                </Link>
+              </li>
+              <li>
+                <Link to="/admin" className="text-[#1A1A1A] hover:text-[#7A1F2A]">
+                  Admin
+                </Link>
+              </li>
+            </ul>
           </div>
         </div>
 

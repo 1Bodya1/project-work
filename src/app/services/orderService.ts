@@ -1,8 +1,8 @@
-import { mockOrders } from '../mocks/mockOrders';
 import type { Order } from '../types';
 
 type CreateOrderData = Partial<Omit<Order, 'id' | 'date' | 'paymentStatus'>>;
 const ORDERS_STORAGE_KEY = 'solution_orders';
+const LEGACY_DEMO_ORDER_IDS = new Set(['ORD-001', 'ORD-002', 'ORD-013', 'ORD-014', 'ORD-015']);
 
 function normalizeOrder(order: Order): Order {
   const orderStatus = order.orderStatus || order.status || 'pending';
@@ -29,7 +29,10 @@ function readStoredOrders() {
   if (!storedOrders) return [];
 
   try {
-    return (JSON.parse(storedOrders) as Order[]).map(normalizeOrder);
+    const orders = (JSON.parse(storedOrders) as Order[]).filter(
+      (order) => !LEGACY_DEMO_ORDER_IDS.has(order.id),
+    );
+    return orders.map(normalizeOrder);
   } catch {
     localStorage.removeItem(ORDERS_STORAGE_KEY);
     return [];
@@ -60,15 +63,11 @@ export const orderService = {
   },
 
   async getMyOrders() {
-    return [...readStoredOrders(), ...mockOrders.map(normalizeOrder)].filter(
-      (order) => order.id === 'ORD-001' || order.id === 'ORD-002' || order.id.startsWith('ORD-'),
-    );
+    return readStoredOrders();
   },
 
   async getOrderById(id: string) {
-    return readStoredOrders().find((order) => order.id === id)
-      || mockOrders.map(normalizeOrder).find((order) => order.id === id)
-      || null;
+    return readStoredOrders().find((order) => order.id === id) || null;
   },
 };
 
