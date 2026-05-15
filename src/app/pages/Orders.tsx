@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { RefreshCw, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '../components/StatusBadge';
+import { formatOrderDateTime } from '../lib/dateFormat';
 import { deliveryService } from '../services/deliveryService';
 import { orderService } from '../services/orderService';
 import type { Order } from '../types';
@@ -12,8 +13,10 @@ function getOrderStatus(order: Order) {
 }
 
 function getPreview(order: Order) {
-  const customizedItem = order.items.find((item) =>
+  const items = order.items || [];
+  const customizedItem = items.find((item) =>
     item.previewUrl
+    || item.screenshot3dUrl
     || item.customImage
     || item.customDesignImage
     || item.customDesign?.previewUrl
@@ -21,17 +24,18 @@ function getPreview(order: Order) {
     || item.customDesignId
   );
 
-  return customizedItem?.previewUrl
+  return customizedItem?.screenshot3dUrl
+    || customizedItem?.previewUrl
     || customizedItem?.customImage
     || customizedItem?.customDesignImage
     || customizedItem?.customDesign?.previewUrl
     || customizedItem?.image
-    || order.items[0]?.previewUrl
-    || order.items[0]?.image;
+    || items[0]?.previewUrl
+    || items[0]?.image;
 }
 
 function hasCustomizedItem(order: Order) {
-  return order.items.some((item) =>
+  return (order.items || []).some((item) =>
     item.hasCustomDesign
     || item.customDesignId
     || item.previewUrl
@@ -131,7 +135,7 @@ export default function Orders() {
                   <div className="flex flex-col sm:flex-row gap-4 min-w-0">
                     <div className="w-24 h-24 bg-[#F5F5F5] rounded overflow-hidden flex-shrink-0 border border-black/5">
                       {preview ? (
-                        <img src={preview} alt={order.id} className="w-full h-full object-contain p-2" />
+                        <img src={preview} alt="Order preview" className="w-full h-full object-contain p-2" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-xs text-[#1A1A1A]">
                           No preview
@@ -140,14 +144,14 @@ export default function Orders() {
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <h4>{order.id}</h4>
+                        <h4>Order</h4>
                         {isCustomized && (
                           <span className="text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
                             Customized
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-[#1A1A1A]">Date: {order.date}</p>
+                      <p className="text-sm text-[#1A1A1A]">Date: {formatOrderDateTime(order.date)}</p>
                       {order.trackingNumber ? (
                         <>
                           <p className="text-sm text-[#1A1A1A] mt-1">Tracking: {order.trackingNumber}</p>

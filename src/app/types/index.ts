@@ -19,6 +19,34 @@ export interface User {
   email: string;
   phone?: string;
   role?: 'user' | 'admin';
+  twoFactorEnabled?: boolean;
+  city?: {
+    ref?: string;
+    description?: string;
+  };
+  novaPoshtaWarehouse?: {
+    ref?: string;
+    description?: string;
+    shortAddress?: string;
+    number?: string;
+  };
+}
+
+export interface NovaPoshtaCity {
+  ref: string;
+  description: string;
+  descriptionRu?: string;
+  areaDescription?: string;
+  settlementTypeDescription?: string;
+}
+
+export interface NovaPoshtaWarehouse {
+  ref: string;
+  description: string;
+  shortAddress?: string;
+  number?: string;
+  typeOfWarehouse?: string;
+  categoryOfWarehouse?: string;
 }
 
 export interface Category {
@@ -27,10 +55,42 @@ export interface Category {
   slug: string;
 }
 
+export type ProductType = 'tshirt' | 'mug' | 'laptop' | 'custom';
+export type CustomizationMode = 'multi-placement' | 'single-surface' | 'wrap';
+export type ProductPrintAreaKey =
+  | 'front'
+  | 'back'
+  | 'leftSleeve'
+  | 'rightSleeve'
+  | 'leftSide'
+  | 'rightSide'
+  | 'wrap'
+  | 'handle'
+  | 'outer'
+  | 'lid'
+  | 'palmRest';
+export type ProductPrintAreaType = 'uv' | 'decal' | 'uv-or-decal';
+
+export interface ProductPrintArea {
+  key: ProductPrintAreaKey;
+  label: string;
+  type: ProductPrintAreaType;
+}
+
+export interface ProductColorOption {
+  name: string;
+  hex: string;
+}
+
 export interface Product {
   id: string;
   name: string;
+  title?: string;
   price: number;
+  productType?: ProductType;
+  model3dUrl?: string;
+  customizationMode?: CustomizationMode;
+  printAreas?: ProductPrintArea[];
   image: string;
   images?: string[];
   mockups?: {
@@ -45,8 +105,12 @@ export interface Product {
     left: string;
     right: string;
   }>;
+  colorOptions?: ProductColorOption[];
   colors?: string[];
   category?: string;
+  featured?: boolean;
+  isFeatured?: boolean;
+  isActive?: boolean;
   customizable?: boolean;
   isCustomizable?: boolean;
   description?: string;
@@ -69,6 +133,7 @@ export interface CustomDesign {
   uploadedImageUrl?: string;
   imageUrl?: string;
   previewUrl?: string;
+  screenshot3dUrl?: string;
   position: { x: number; y: number };
   scale: number;
   rotation: number;
@@ -103,10 +168,12 @@ export interface CustomDesignPlacement {
 export interface CartItem {
   id: string;
   productId: string;
+  productType?: ProductType;
   title: string;
   name?: string;
   image?: string;
   previewUrl?: string;
+  screenshot3dUrl?: string;
   customImage?: string;
   customDesignId?: string;
   designId?: string;
@@ -132,9 +199,11 @@ export interface Cart {
 export interface OrderItem {
   id?: string;
   productId?: string;
+  productType?: ProductType;
   name: string;
   image: string;
   previewUrl?: string;
+  screenshot3dUrl?: string;
   customImage?: string;
   customDesignImage?: string;
   customDesignId?: string;
@@ -155,8 +224,16 @@ export interface OrderItem {
 
 export interface DeliveryInfo {
   provider?: string;
-  city: string;
-  warehouse: string;
+  city: string | {
+    ref?: string;
+    description?: string;
+  };
+  warehouse: string | {
+    ref?: string;
+    description?: string;
+    shortAddress?: string;
+    number?: string;
+  };
   comment?: string;
   status?: string;
 }

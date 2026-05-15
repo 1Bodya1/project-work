@@ -36,6 +36,10 @@ function getColorKey(color?: string) {
   return colorAliases[normalizedColor] || normalizedColor.replace(/[^a-z0-9]+/g, '-');
 }
 
+function normalizeMockupPath(path?: string) {
+  return (path || '').replace(/^\/public\//, '/').replace(/^public\//, '/');
+}
+
 export function getProductColorMockups(product: Product, color?: string): ProductMockupViews | null {
   const mockupsByColor = product.mockupsByColor;
   const requestedColorKey = getColorKey(color);
@@ -53,7 +57,14 @@ export function getProductColorMockups(product: Product, color?: string): Produc
 
     for (const colorKey of colorKeys) {
       const colorMockups = mockupsByColor[colorKey];
-      if (isMockupViews(colorMockups)) return colorMockups;
+      if (isMockupViews(colorMockups)) {
+        return {
+          front: normalizeMockupPath(colorMockups.front),
+          back: normalizeMockupPath(colorMockups.back),
+          left: normalizeMockupPath(colorMockups.left),
+          right: normalizeMockupPath(colorMockups.right),
+        };
+      }
     }
   }
 
@@ -62,17 +73,17 @@ export function getProductColorMockups(product: Product, color?: string): Produc
 
 export function getProductMockupFallback(product: Product, view: ProductMockupView = 'front') {
   const legacyMockups = getLegacyMockups(product);
-  if (legacyMockups?.[view]) return legacyMockups[view];
+  if (legacyMockups?.[view]) return normalizeMockupPath(legacyMockups[view]);
 
   const mockupsByColor = product.mockupsByColor;
   if (mockupsByColor) {
     const firstMockupSet = Object.values(mockupsByColor).find(isMockupViews);
-    if (firstMockupSet?.[view]) return firstMockupSet[view];
-    if (firstMockupSet?.front) return firstMockupSet.front;
+    if (firstMockupSet?.[view]) return normalizeMockupPath(firstMockupSet[view]);
+    if (firstMockupSet?.front) return normalizeMockupPath(firstMockupSet.front);
   }
 
   const imageIndex = viewOrder.indexOf(view);
-  return product.images?.[imageIndex] || product.images?.[0] || product.image || '/mockups/tshirt/front.png';
+  return normalizeMockupPath(product.images?.[imageIndex] || product.images?.[0] || product.image || '/mockups/tshirt/front.png');
 }
 
 export function getProductMockup(product: Product, view: ProductMockupView = 'front', color?: string) {

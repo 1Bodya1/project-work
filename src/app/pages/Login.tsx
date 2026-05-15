@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../store/AuthContext';
+import { isAdminUser } from '../lib/auth';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,17 +12,11 @@ export default function Login() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
 
-  const fillDemoCredentials = (email: string, password: string) => {
-    setFormData({ email, password });
-    setErrors({});
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
     setIsLoading(true);
 
-    // Validation
     const newErrors: Record<string, string> = {};
     if (!formData.email) newErrors.email = 'Email is required';
     if (!formData.password) newErrors.password = 'Password is required';
@@ -35,12 +31,12 @@ export default function Login() {
     }
 
     try {
-      await login(formData);
+      const user = await login(formData);
       toast.success('Login successful');
       setIsLoading(false);
-      navigate('/profile');
-    } catch {
-      setErrors({ form: 'Unable to sign in. Please try again.' });
+      navigate(isAdminUser(user) ? '/admin' : '/profile');
+    } catch (error) {
+      setErrors({ form: error instanceof Error ? error.message : 'Unable to sign in. Please try again.' });
       setIsLoading(false);
     }
   };
@@ -104,6 +100,7 @@ export default function Login() {
               disabled={isLoading}
               className="w-full py-4 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              <KeyRound className="mr-2 inline h-4 w-4" />
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
@@ -114,46 +111,6 @@ export default function Login() {
               <Link to="/register" className="text-[#7A1F2A] hover:underline">
                 Create account
               </Link>
-            </p>
-          </div>
-
-          <div className="mt-6 border-t border-black/10 pt-6">
-            <p className="text-sm text-[#1A1A1A] mb-3">Demo credentials</p>
-            <div className="space-y-3">
-              <div className="bg-[#F5F5F5] rounded p-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div>
-                    <p className="text-sm">User</p>
-                    <p className="text-xs text-[#1A1A1A]">user@test.com / user123</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoCredentials('user@test.com', 'user123')}
-                    className="px-3 py-2 border border-black/10 rounded text-sm hover:bg-white transition-colors"
-                  >
-                    Use user demo
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-[#F5F5F5] rounded p-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div>
-                    <p className="text-sm">Admin</p>
-                    <p className="text-xs text-[#1A1A1A]">admin@solution.com / admin123</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoCredentials('admin@solution.com', 'admin123')}
-                    className="px-3 py-2 border border-black/10 rounded text-sm hover:bg-white transition-colors"
-                  >
-                    Use admin demo
-                  </button>
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-[#1A1A1A] mt-3">
-              In mock mode, any email containing "admin" receives the admin role.
             </p>
           </div>
         </div>

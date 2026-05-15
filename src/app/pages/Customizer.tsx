@@ -1,21 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
-import { Check, ChevronRight, Move, RotateCw, Save, Trash2, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { Check, ChevronRight, Move, RotateCw, Save, Trash2, Upload, ZoomIn } from 'lucide-react';
 import { toast } from 'sonner';
-import { ProductPreview3D } from '../components/ProductPreview3D';
+import { Product3DPreview, type Product3DPreviewHandle } from '../components/Product3DPreview';
 import { getProductMockup, getProductMockupFallback } from '../lib/productMockups';
 import { designService } from '../services/designService';
+import { uploadService } from '../services/uploadService';
 import { productService } from '../services/productService';
 import { useCart } from '../store/CartContext';
-import type { CustomDesign, Product } from '../types';
+import type { CartItem, CustomDesign, Product, ProductPrintArea, ProductPrintAreaKey, ProductPrintAreaType } from '../types';
 
 const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
 const MAX_UPLOAD_FILE_SIZE = 5 * 1024 * 1024;
-const PREVIEW_MAX_SIZE = 800;
+const PREVIEW_MAX_SIZE = 400; // Reduced from 800 for smaller file size
 const PREVIEW_OUTPUT_TYPE = 'image/webp';
-const PREVIEW_OUTPUT_QUALITY = 0.75;
+const PREVIEW_OUTPUT_QUALITY = 0.5; // Reduced from 0.75 for smaller file size
 type PreviewMode = '2d' | '3d';
-type PrintPlacement = 'front' | 'back' | 'leftSleeve' | 'rightSleeve' | 'leftSide' | 'rightSide';
+type TShirtPrintPlacement = 'front' | 'back' | 'leftSleeve' | 'rightSleeve' | 'leftSide' | 'rightSide';
+type PrintPlacement = ProductPrintAreaKey;
 type PlacementView = 'front' | 'back' | 'left' | 'right';
 type PlacementState = {
   uploadedImage: string | null;
@@ -26,15 +28,50 @@ type PlacementState = {
   rotation: number;
   isActive: boolean;
 };
+type PlacementStates = Record<string, PlacementState>;
+type ProductPrintPlacement = {
+  id: PrintPlacement;
+  label: string;
+  type: ProductPrintAreaType;
+  view: PlacementView;
+};
+type PlacementImageFields = {
+  uploadedImage?: string | null;
+  uploadedImageUrl?: string | null;
+  previewUrl?: string | null;
+};
 
-const printPlacements: Array<{ id: PrintPlacement; label: string; view: PlacementView }> = [
-  { id: 'front', label: 'Front', view: 'front' },
-  { id: 'back', label: 'Back', view: 'back' },
-  { id: 'leftSleeve', label: 'Left sleeve', view: 'left' },
-  { id: 'rightSleeve', label: 'Right sleeve', view: 'right' },
-  { id: 'leftSide', label: 'Left side', view: 'left' },
-  { id: 'rightSide', label: 'Right side', view: 'right' },
+const tshirtPrintAreas: ProductPrintArea[] = [
+  { key: 'front', label: 'Front', type: 'uv' },
+  { key: 'back', label: 'Back', type: 'uv' },
+  { key: 'leftSleeve', label: 'Left sleeve', type: 'uv' },
+  { key: 'rightSleeve', label: 'Right sleeve', type: 'uv' },
+  { key: 'leftSide', label: 'Left side', type: 'uv' },
+  { key: 'rightSide', label: 'Right side', type: 'uv' },
 ];
+
+const tshirtPreviewPlacementKeys = new Set<ProductPrintAreaKey>([
+  'front',
+  'back',
+  'leftSleeve',
+  'rightSleeve',
+  'leftSide',
+  'rightSide',
+]);
+
+const placementViews: Record<ProductPrintAreaKey, PlacementView> = {
+  front: 'front',
+  back: 'back',
+  leftSleeve: 'left',
+  rightSleeve: 'right',
+  leftSide: 'left',
+  rightSide: 'right',
+  wrap: 'front',
+  handle: 'right',
+  outer: 'front',
+  lid: 'front',
+  palmRest: 'front',
+};
 
 const defaultPlacementState: PlacementState = {
   uploadedImage: null,
@@ -46,25 +83,72 @@ const defaultPlacementState: PlacementState = {
   isActive: false,
 };
 
-function createDefaultPlacements(): Record<PrintPlacement, PlacementState> {
+function isTShirtPreviewPlacement(placement: PrintPlacement): placement is TShirtPrintPlacement {
+  return tshirtPreviewPlacementKeys.has(placement);
+}
+
+function getProductPrintPlacements(product?: Product | null): ProductPrintPlacement[] {
+  const printAreas = product?.printAreas?.length ? product.printAreas : tshirtPrintAreas;
+
+  return printAreas.map((area) => ({
+    id: area.key,
+    label: area.label,
+    type: area.type,
+    view: placementViews[area.key] || 'front',
+  }));
+}
+
+function resolveActivePlacement(
+  printPlacements: ProductPrintPlacement[],
+  candidate?: PrintPlacement,
+): PrintPlacement {
+  return printPlacements.some((placement) => placement.id === candidate)
+    ? candidate as PrintPlacement
+    : printPlacements[0]?.id || 'front';
+}
+
+function createPlacementState(isActive = false): PlacementState {
+  return {
+    uploadedImage: defaultPlacementState.uploadedImage,
+    uploadedImageUrl: defaultPlacementState.uploadedImageUrl,
+    previewUrl: defaultPlacementState.previewUrl,
+    position: { ...defaultPlacementState.position },
+    scale: defaultPlacementState.scale,
+    rotation: defaultPlacementState.rotation,
+    isActive,
+  };
+}
+
+function createDefaultPlacements(
+  printPlacements = getProductPrintPlacements(),
+  activePlacement: PrintPlacement = 'front',
+): PlacementStates {
+  const resolvedActivePlacement = resolveActivePlacement(printPlacements, activePlacement);
+
   return printPlacements.reduce(
     (placements, placement) => ({
       ...placements,
-      [placement.id]: {
-        uploadedImage: defaultPlacementState.uploadedImage,
-        uploadedImageUrl: defaultPlacementState.uploadedImageUrl,
-        position: { ...defaultPlacementState.position },
-        scale: defaultPlacementState.scale,
-        rotation: defaultPlacementState.rotation,
-        isActive: placement.id === 'front',
-      },
+      [placement.id]: createPlacementState(placement.id === resolvedActivePlacement),
     }),
-    {} as Record<PrintPlacement, PlacementState>,
+    {} as PlacementStates,
   );
 }
 
-function restorePlacementsFromDesign(design: CustomDesign): Record<PrintPlacement, PlacementState> {
-  const defaultPlacements = createDefaultPlacements();
+function getPlacementState(
+  placements: PlacementStates,
+  placement: PrintPlacement,
+  isActive = false,
+): PlacementState {
+  return placements[placement] || createPlacementState(isActive);
+}
+
+function restorePlacementsFromDesign(
+  design: CustomDesign,
+  printPlacements = getProductPrintPlacements(),
+  activePlacement: PrintPlacement = 'front',
+): PlacementStates {
+  const defaultPlacements = createDefaultPlacements(printPlacements, activePlacement);
+  const resolvedActivePlacement = resolveActivePlacement(printPlacements, activePlacement);
 
   return printPlacements.reduce(
     (placements, placement) => {
@@ -80,17 +164,17 @@ function restorePlacementsFromDesign(design: CustomDesign): Record<PrintPlacemen
           position: savedPlacement?.position || defaultPlacements[placement.id].position,
           scale: savedPlacement?.scale ?? defaultPlacements[placement.id].scale,
           rotation: savedPlacement?.rotation ?? defaultPlacements[placement.id].rotation,
-          isActive: placement.id === (design.activePlacement || 'front'),
+          isActive: placement.id === resolvedActivePlacement,
         },
       };
     },
-    {} as Record<PrintPlacement, PlacementState>,
+    {} as PlacementStates,
   );
 }
 
 function getPlacementSnapshot(placement: PlacementState | CustomDesign['placements'][string] | undefined) {
   return {
-    image: placement?.uploadedImageUrl || placement?.uploadedImage || placement?.previewUrl || null,
+    image: getPlacementImageSource(placement),
     previewUrl: placement?.previewUrl || null,
     position: placement?.position || { x: 50, y: 50 },
     scale: placement?.scale ?? 50,
@@ -99,9 +183,10 @@ function getPlacementSnapshot(placement: PlacementState | CustomDesign['placemen
 }
 
 function getCurrentDesignSnapshot(
-  placements: Record<PrintPlacement, PlacementState>,
+  placements: PlacementStates,
   selectedSize: string,
   selectedColor: string,
+  printPlacements: ProductPrintPlacement[],
 ) {
   return {
     selectedSize,
@@ -111,12 +196,12 @@ function getCurrentDesignSnapshot(
         ...snapshot,
         [placement.id]: getPlacementSnapshot(placements[placement.id]),
       }),
-      {} as Record<PrintPlacement, ReturnType<typeof getPlacementSnapshot>>,
+      {} as Record<string, ReturnType<typeof getPlacementSnapshot>>,
     ),
   };
 }
 
-function getSavedDesignSnapshot(design: CustomDesign) {
+function getSavedDesignSnapshot(design: CustomDesign, printPlacements: ProductPrintPlacement[]) {
   return {
     selectedSize: design.selectedSize || '',
     selectedColor: design.selectedColor || '',
@@ -125,35 +210,40 @@ function getSavedDesignSnapshot(design: CustomDesign) {
         ...snapshot,
         [placement.id]: getPlacementSnapshot(design.placements?.[placement.id]),
       }),
-      {} as Record<PrintPlacement, ReturnType<typeof getPlacementSnapshot>>,
+      {} as Record<string, ReturnType<typeof getPlacementSnapshot>>,
     ),
   };
 }
 
 function doesCurrentDesignMatchSaved(
-  placements: Record<PrintPlacement, PlacementState>,
+  placements: PlacementStates,
   selectedSize: string,
   selectedColor: string,
   savedDesign: CustomDesign | null,
+  printPlacements: ProductPrintPlacement[],
 ) {
   if (!savedDesign) return false;
 
-  return JSON.stringify(getCurrentDesignSnapshot(placements, selectedSize, selectedColor))
-    === JSON.stringify(getSavedDesignSnapshot(savedDesign));
+  return JSON.stringify(getCurrentDesignSnapshot(placements, selectedSize, selectedColor, printPlacements))
+    === JSON.stringify(getSavedDesignSnapshot(savedDesign, printPlacements));
 }
 
 function resolvePlacementArea(product: Product, placement: PrintPlacement) {
   const frontArea = product.printArea || { x: 31, y: 30, width: 38, height: 34 };
-  const placementAreas: Record<PrintPlacement, typeof frontArea> = {
+  const placementAreas: Partial<Record<PrintPlacement, typeof frontArea>> = {
     front: frontArea,
     back: { x: 32, y: 26, width: 36, height: 34 },
     leftSleeve: { x: 22, y: 25, width: 24, height: 24 },
     rightSleeve: { x: 54, y: 25, width: 24, height: 24 },
     leftSide: { x: 30, y: 34, width: 28, height: 36 },
     rightSide: { x: 42, y: 34, width: 28, height: 36 },
+    handle: { x: 57, y: 33, width: 18, height: 24 },
+    outer: { x: 24, y: 32, width: 52, height: 28 },
+    lid: { x: 23, y: 20, width: 54, height: 34 },
+    palmRest: { x: 23, y: 56, width: 54, height: 22 },
   };
 
-  return placementAreas[placement];
+  return placementAreas[placement] || frontArea;
 }
 
 function isStorageQuotaError(error: unknown) {
@@ -164,9 +254,63 @@ function isStorageQuotaError(error: unknown) {
       || error.code === 1014);
 }
 
+function isObjectUrl(value?: string | null) {
+  return Boolean(value?.startsWith('blob:'));
+}
+
+function getPlacementImageSource(placement?: PlacementImageFields | null) {
+  return placement?.uploadedImage || placement?.previewUrl || placement?.uploadedImageUrl || null;
+}
+
+function getDesignedPlacementIds(placements?: CustomDesign['placements']) {
+  if (!placements) return [];
+
+  return Object.entries(placements)
+    .filter(([, placement]) =>
+      Boolean(placement?.uploadedImage || placement?.uploadedImageUrl || placement?.previewUrl),
+    )
+    .map(([placementId]) => placementId);
+}
+
+function createDesignFromCartItem(
+  item: CartItem,
+  product?: Product | null,
+): CustomDesign {
+  const placements = item.customDesignPlacements || item.customDesign?.placements || {};
+  const usedPlacements = item.usedPlacements?.length ? item.usedPlacements : getDesignedPlacementIds(placements);
+  const customDesignId = item.customDesignId || item.designId || item.id;
+
+  return {
+    ...(item.customDesign || {}),
+    id: customDesignId,
+    customDesignId,
+    productId: item.productId,
+    productTitle: item.title || item.name || product?.name || '',
+    productType: item.productType || product?.productType,
+    uploadedImageUrl: item.customImage || item.customDesign?.uploadedImageUrl || item.customDesign?.imageUrl || '',
+    imageUrl: item.customImage || item.customDesign?.imageUrl || '',
+    previewUrl: item.previewUrl || item.customDesign?.previewUrl || item.image || '',
+    screenshot3dUrl: item.screenshot3dUrl || item.customDesign?.screenshot3dUrl || '',
+    selectedSize: item.size,
+    selectedColor: item.color,
+    activePlacement: item.customDesign?.activePlacement || usedPlacements[0] || 'front',
+    position: item.customDesign?.position || { x: 50, y: 50 },
+    scale: item.customDesign?.scale ?? 50,
+    rotation: item.customDesign?.rotation ?? 0,
+    previewMode: item.customDesign?.previewMode || '3d',
+    placements,
+    usedPlacements,
+    canvasState: item.customDesign?.canvasState,
+    createdAt: item.customDesign?.createdAt || new Date().toISOString(),
+  };
+}
+
 function loadImageFromDataUrl(dataUrl: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
+    if (/^https?:\/\//i.test(dataUrl)) {
+      image.crossOrigin = 'anonymous';
+    }
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = dataUrl;
@@ -195,42 +339,103 @@ export default function Customizer() {
   const { id, productId } = useParams();
   const resolvedProductId = productId || id;
   const navigate = useNavigate();
-  const { addItem } = useCart();
+  const [searchParams] = useSearchParams();
+  const editingCartItemId = searchParams.get('cartItemId') || '';
+  const editingDesignId = searchParams.get('designId') || '';
+  const {
+    addItem,
+    updateItem,
+    items: cartItems,
+    isLoading: isCartLoading,
+  } = useCart();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const preview3DRef = useRef<Product3DPreviewHandle>(null);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activePlacement, setActivePlacement] = useState<PrintPlacement>('front');
-  const [placements, setPlacements] = useState<Record<PrintPlacement, PlacementState>>(createDefaultPlacements);
+  const [placements, setPlacements] = useState<PlacementStates>(createDefaultPlacements);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [isDesignSaved, setIsDesignSaved] = useState(false);
+  const [isSavingDesign, setIsSavingDesign] = useState(false);
+  const [showSavedAnimation, setShowSavedAnimation] = useState(false);
   const [customDesignId, setCustomDesignId] = useState('');
   const [savedPreviewUrl, setSavedPreviewUrl] = useState('');
   const [savedDesign, setSavedDesign] = useState<CustomDesign | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('2d');
+  const [modelZoom, setModelZoom] = useState(100);
+  const objectUrlsRef = useRef(new Set<string>());
+  const savedAnimationTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const printPlacements = useMemo(() => getProductPrintPlacements(product), [product]);
+  const editingCartItem = useMemo(
+    () => editingCartItemId
+      ? cartItems.find((item) => item.id === editingCartItemId) || null
+      : null,
+    [cartItems, editingCartItemId],
+  );
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrlsRef.current.clear();
+    if (savedAnimationTimeoutRef.current) {
+      window.clearTimeout(savedAnimationTimeoutRef.current);
+    }
+  }, []);
 
   function markDesignUnsaved() {
     setIsDesignSaved(false);
+    setShowSavedAnimation(false);
+    if (savedAnimationTimeoutRef.current) {
+      window.clearTimeout(savedAnimationTimeoutRef.current);
+      savedAnimationTimeoutRef.current = null;
+    }
+  }
+
+  function playSavedAnimation() {
+    setShowSavedAnimation(true);
+    if (savedAnimationTimeoutRef.current) {
+      window.clearTimeout(savedAnimationTimeoutRef.current);
+    }
+
+    savedAnimationTimeoutRef.current = window.setTimeout(() => {
+      setShowSavedAnimation(false);
+      savedAnimationTimeoutRef.current = null;
+    }, 1400);
   }
 
   function updateActivePlacement(data: Partial<PlacementState>) {
-    setPlacements((currentPlacements) => ({
-      ...currentPlacements,
-      [activePlacement]: {
-        ...currentPlacements[activePlacement],
-        ...data,
-        position: data.position || currentPlacements[activePlacement].position,
-        uploadedImageUrl: Object.prototype.hasOwnProperty.call(data, 'uploadedImageUrl')
-          ? data.uploadedImageUrl ?? null
-          : Object.prototype.hasOwnProperty.call(data, 'uploadedImage')
-            ? data.uploadedImage ?? null
-            : currentPlacements[activePlacement].uploadedImageUrl,
-        previewUrl: Object.prototype.hasOwnProperty.call(data, 'previewUrl')
-          ? data.previewUrl ?? null
-          : currentPlacements[activePlacement].previewUrl,
-      },
-    }));
+    setPlacements((currentPlacements) => {
+      const currentPlacement = currentPlacements[activePlacement] || createPlacementState(true);
+      const nextUploadedImage = Object.prototype.hasOwnProperty.call(data, 'uploadedImage')
+        ? data.uploadedImage ?? null
+        : currentPlacement.uploadedImage || null;
+
+      if (
+        currentPlacement.uploadedImage
+        && currentPlacement.uploadedImage !== nextUploadedImage
+        && isObjectUrl(currentPlacement.uploadedImage)
+      ) {
+        URL.revokeObjectURL(currentPlacement.uploadedImage);
+        objectUrlsRef.current.delete(currentPlacement.uploadedImage);
+      }
+
+      return {
+        ...currentPlacements,
+        [activePlacement]: {
+          ...currentPlacement,
+          ...data,
+          uploadedImage: nextUploadedImage,
+          position: data.position || currentPlacement.position || defaultPlacementState.position,
+          uploadedImageUrl: Object.prototype.hasOwnProperty.call(data, 'uploadedImageUrl')
+            ? data.uploadedImageUrl ?? null
+            : currentPlacement.uploadedImageUrl || null,
+          previewUrl: Object.prototype.hasOwnProperty.call(data, 'previewUrl')
+            ? data.previewUrl ?? null
+            : currentPlacement.previewUrl || null,
+        },
+      };
+    });
     markDesignUnsaved();
   }
 
@@ -241,11 +446,11 @@ export default function Customizer() {
         (nextPlacements, item) => ({
           ...nextPlacements,
           [item.id]: {
-            ...currentPlacements[item.id],
+            ...(currentPlacements[item.id] || createPlacementState()),
             isActive: item.id === placement,
           },
         }),
-        {} as Record<PrintPlacement, PlacementState>,
+        {} as PlacementStates,
       ),
     );
   }
@@ -259,16 +464,33 @@ export default function Customizer() {
         return;
       }
 
+      if (editingCartItemId && isCartLoading) {
+        return;
+      }
+
       const nextProduct = await productService.getProductById(resolvedProductId);
-      const productDesign = nextProduct
-        ? await designService.getDesignByProductId(nextProduct.id)
-        : null;
+      const productDesign = editingCartItem
+        ? createDesignFromCartItem(editingCartItem, nextProduct)
+        : editingDesignId
+          ? await designService.getDesignById(editingDesignId)
+          : nextProduct
+            ? await designService.getDesignByProductId(nextProduct.id)
+            : null;
       if (isMounted) {
         setProduct(nextProduct);
         setSelectedSize(productDesign?.selectedSize || nextProduct?.sizes?.[0] || '');
         setSelectedColor(productDesign?.selectedColor || nextProduct?.colors?.[0] || '');
-        setActivePlacement((productDesign?.activePlacement as PrintPlacement) || 'front');
-        setPlacements(productDesign ? restorePlacementsFromDesign(productDesign) : createDefaultPlacements());
+        const nextPrintPlacements = getProductPrintPlacements(nextProduct);
+        const nextActivePlacement = resolveActivePlacement(
+          nextPrintPlacements,
+          (productDesign?.activePlacement as PrintPlacement) || 'front',
+        );
+        setActivePlacement(nextActivePlacement);
+        setPlacements(
+          productDesign
+            ? restorePlacementsFromDesign(productDesign, nextPrintPlacements, nextActivePlacement)
+            : createDefaultPlacements(nextPrintPlacements, nextActivePlacement),
+        );
         setCustomDesignId(productDesign?.id || '');
         setSavedPreviewUrl(productDesign?.previewUrl || '');
         setSavedDesign(productDesign);
@@ -282,14 +504,20 @@ export default function Customizer() {
     return () => {
       isMounted = false;
     };
-  }, [resolvedProductId]);
+  }, [editingCartItem, editingCartItemId, editingDesignId, isCartLoading, resolvedProductId]);
 
   useEffect(() => {
-    const matchesSavedDesign = doesCurrentDesignMatchSaved(placements, selectedSize, selectedColor, savedDesign);
+    const matchesSavedDesign = doesCurrentDesignMatchSaved(
+      placements,
+      selectedSize,
+      selectedColor,
+      savedDesign,
+      printPlacements,
+    );
     setIsDesignSaved((currentValue) => (
       currentValue === matchesSavedDesign ? currentValue : matchesSavedDesign
     ));
-  }, [placements, selectedColor, selectedSize, savedDesign]);
+  }, [placements, printPlacements, selectedColor, selectedSize, savedDesign]);
 
   function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -307,26 +535,41 @@ export default function Customizer() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (readerEvent) => {
-      const uploadedImageUrl = readerEvent.target?.result as string;
-      updateActivePlacement({
-        uploadedImage: uploadedImageUrl,
-        uploadedImageUrl,
-        position: { x: 50, y: 50 },
-        scale: 50,
-        rotation: 0,
+    const localPreviewUrl = URL.createObjectURL(file);
+    objectUrlsRef.current.add(localPreviewUrl);
+
+    toast.loading('Uploading image...');
+
+    uploadService.uploadDesignImage(file)
+      .then((response) => {
+        toast.dismiss();
+        updateActivePlacement({
+          uploadedImage: localPreviewUrl,
+          uploadedImageUrl: response.url,
+          previewUrl: localPreviewUrl,
+          position: { x: 50, y: 50 },
+          scale: 50,
+          rotation: 0,
+        });
+        toast.success('Image uploaded successfully');
+      })
+      .catch((error) => {
+        toast.dismiss();
+        URL.revokeObjectURL(localPreviewUrl);
+        objectUrlsRef.current.delete(localPreviewUrl);
+        console.error('Failed to upload design image:', error);
+        toast.error('Failed to upload image. Please try again.');
+      })
+      .finally(() => {
+        event.target.value = '';
       });
-    };
-    reader.readAsDataURL(file);
-    event.target.value = '';
   }
 
   function removeDesignFromActivePlacement() {
     setPlacements((currentPlacements) => ({
       ...currentPlacements,
       [activePlacement]: {
-        ...currentPlacements[activePlacement],
+        ...getPlacementState(currentPlacements, activePlacement, true),
         uploadedImage: null,
         uploadedImageUrl: null,
         previewUrl: null,
@@ -341,10 +584,12 @@ export default function Customizer() {
 
   async function saveDesign() {
     if (!product) return;
+    if (isSavingDesign || isDesignSaved) return;
 
-    const designedPlacements = printPlacements.filter((placement) =>
-      placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl,
-    );
+    const designedPlacements = printPlacements.filter((placement) => {
+      const placementState = getPlacementState(placements, placement.id);
+      return placementState.uploadedImage || placementState.uploadedImageUrl;
+    });
     if (!designedPlacements.length) {
       toast.error('Upload a design first');
       return;
@@ -360,52 +605,57 @@ export default function Customizer() {
       return;
     }
 
-    const primaryPlacement = placements[activePlacement].uploadedImage || placements[activePlacement].uploadedImageUrl
+    const activeState = getPlacementState(placements, activePlacement, true);
+    const primaryPlacement = activeState.uploadedImage || activeState.uploadedImageUrl
       ? activePlacement
       : designedPlacements[0].id;
-    const primaryState = placements[primaryPlacement];
+    const primaryState = getPlacementState(placements, primaryPlacement);
 
     try {
+      setIsSavingDesign(true);
       const compressedEntries = await Promise.all(
         designedPlacements.map(async (placement) => [
           placement.id,
-          await createCompressedPreviewUrl(placements[placement.id].uploadedImageUrl || placements[placement.id].uploadedImage || ''),
+          await createCompressedPreviewUrl(getPlacementImageSource(getPlacementState(placements, placement.id)) || ''),
         ] as const),
       );
       const compressedPreviewByPlacement = Object.fromEntries(compressedEntries) as Partial<Record<PrintPlacement, string>>;
       const uploadedImageUrl = compressedPreviewByPlacement[primaryPlacement] || '';
       const previewUrl = uploadedImageUrl || getProductMockup(product, 'front', selectedColor || product.colors?.[0]);
+      const screenshot3dUrl = preview3DRef.current?.capture3DScreenshot() || '';
       const usedPlacementIds = designedPlacements.map((placement) => placement.id);
+      
+      // Only store placement data for placements that have an uploaded image, to reduce storage size
       const placementData = printPlacements.reduce(
-        (data, placement) => ({
-          ...data,
-          [placement.id]: {
-            uploadedImage: placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl
-              ? compressedPreviewByPlacement[placement.id] || previewUrl
-              : null,
-            uploadedImageUrl: placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl
-              ? compressedPreviewByPlacement[placement.id] || previewUrl
-              : null,
-            previewUrl: placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl
-              ? compressedPreviewByPlacement[placement.id] || previewUrl
-              : null,
-            position: placements[placement.id].position,
-            scale: placements[placement.id].scale,
-            rotation: placements[placement.id].rotation,
-            isActive: placement.id === activePlacement,
-            label: placement.label,
-            view: placement.view,
-            printArea: resolvePlacementArea(product, placement.id),
-          },
-        }),
-        {} as Record<PrintPlacement, PlacementState & { label: string; view: PlacementView; printArea: ReturnType<typeof resolvePlacementArea> }>,
+        (data, placement) => {
+          const placementState = getPlacementState(placements, placement.id);
+          const hasImage = placementState.uploadedImage || placementState.uploadedImageUrl;
+          return {
+            ...data,
+            [placement.id]: hasImage ? {
+              uploadedImage: compressedPreviewByPlacement[placement.id] || previewUrl,
+              uploadedImageUrl: compressedPreviewByPlacement[placement.id] || previewUrl,
+              previewUrl: compressedPreviewByPlacement[placement.id] || previewUrl,
+              position: placementState.position,
+              scale: placementState.scale,
+              rotation: placementState.rotation,
+              isActive: placement.id === activePlacement,
+              label: placement.label,
+              view: placement.view,
+              printArea: resolvePlacementArea(product, placement.id),
+            } : null,
+          };
+        },
+        {} as Record<PrintPlacement, (PlacementState & { label: string; view: PlacementView; printArea: ReturnType<typeof resolvePlacementArea> }) | null>,
       );
 
       const { customDesignId: nextCustomDesignId, design } = await designService.saveDesign({
         productId: product.id,
         productTitle: product.name,
+        productType: product.productType,
         uploadedImageUrl,
         previewUrl,
+        screenshot3dUrl,
         selectedSize,
         selectedColor,
         activePlacement,
@@ -427,9 +677,9 @@ export default function Customizer() {
       setCustomDesignId(nextCustomDesignId);
       setSavedPreviewUrl(design.previewUrl || previewUrl);
       setSavedDesign(design);
-      setPlacements(restorePlacementsFromDesign(design));
+      setPlacements(restorePlacementsFromDesign(design, printPlacements, activePlacement));
       setIsDesignSaved(true);
-      toast.success('Design saved');
+      playSavedAnimation();
     } catch (error) {
       if (isStorageQuotaError(error)) {
         toast.error('Image is too large for local preview storage. Please use a smaller image.');
@@ -437,6 +687,8 @@ export default function Customizer() {
       }
 
       toast.error('Could not save design. Try a smaller image and save again.');
+    } finally {
+      setIsSavingDesign(false);
     }
   }
 
@@ -462,6 +714,9 @@ export default function Customizer() {
       || savedPreviewUrl
       || savedDesign.uploadedImageUrl
       || getProductMockup(product, 'front', selectedColor || product.colors?.[0]);
+    const screenshot3dUrl = preview3DRef.current?.capture3DScreenshot()
+      || savedDesign.screenshot3dUrl
+      || previewUrl;
     const usedPlacements = savedDesign.usedPlacements?.length
       ? savedDesign.usedPlacements
       : printPlacements
@@ -473,12 +728,14 @@ export default function Customizer() {
         .map((placement) => placement.id);
 
     try {
-      await addItem({
+      const cartItemData = {
         productId: product.id,
+        productType: product.productType,
         title: product.name,
         name: product.name,
-        image: previewUrl,
+        image: screenshot3dUrl || previewUrl,
         previewUrl,
+        screenshot3dUrl,
         customImage: savedDesign.uploadedImageUrl || previewUrl,
         customDesignId,
         size: selectedSize,
@@ -487,11 +744,20 @@ export default function Customizer() {
         price: product.price,
         isCustomized: true,
         hasCustomDesign: true,
+        customDesign: savedDesign,
         customDesignPlacements: savedDesign.placements,
         usedPlacements,
-      });
+      };
 
-      toast.success('Product added to cart');
+      if (editingCartItemId) {
+        await updateItem(editingCartItemId, cartItemData);
+      } else {
+        await addItem(cartItemData);
+      }
+
+      await designService.deleteDesign(customDesignId, product.id);
+
+      toast.success(editingCartItemId ? 'Cart design updated' : 'Product added to cart');
       navigate('/cart');
     } catch (error) {
       if (isStorageQuotaError(error)) {
@@ -503,8 +769,17 @@ export default function Customizer() {
     }
   }
 
-  const activePlacementState = placements[activePlacement];
-  const currentStep = !printPlacements.some((placement) => placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl)
+  const activePlacementState = getPlacementState(placements, activePlacement, true);
+  const activePlacementImageSource = getPlacementImageSource(activePlacementState);
+  const hasDesignedPlacements = printPlacements.some((placement) => {
+    const placementState = getPlacementState(placements, placement.id);
+    return Boolean(placementState.uploadedImage || placementState.uploadedImageUrl);
+  });
+  const canSaveDesign = hasDesignedPlacements && !isDesignSaved && !isSavingDesign;
+  const currentStep = !printPlacements.some((placement) => {
+    const placementState = getPlacementState(placements, placement.id);
+    return placementState.uploadedImage || placementState.uploadedImageUrl;
+  })
     ? 1
     : isDesignSaved
       ? 4
@@ -592,18 +867,19 @@ export default function Customizer() {
           <div className="bg-[#F5F5F5] rounded-lg p-3 sm:p-6 md:p-8 flex items-center justify-center">
             {previewMode === '3d' ? (
               <div className="w-full max-w-2xl">
-                <ProductPreview3D
-                  designImage={activePlacementState.uploadedImageUrl || activePlacementState.uploadedImage}
+                <Product3DPreview
+                  ref={preview3DRef}
+                  product={product}
+                  designImage={activePlacementImageSource}
                   position={activePlacementState.position}
                   scale={activePlacementState.scale}
                   rotation={activePlacementState.rotation}
                   color={selectedColor}
-                  category={product.category}
                   printArea={printArea}
-                  placement={activePlacement}
                   activePlacement={activePlacement}
                   placements={placements}
                   currentPlacementData={activePlacementState}
+                  modelZoom={modelZoom}
                 />
                 <p className="text-xs text-[#1A1A1A] text-center mt-3">
                   Drag to rotate the 3D preview. This is optional and does not affect checkout.
@@ -626,11 +902,11 @@ export default function Customizer() {
                   className="absolute border-2 border-dashed border-[#7A1F2A] bg-[#7A1F2A]/5 overflow-hidden pointer-events-none"
                   style={printAreaStyle}
                 >
-                  {activePlacementState.uploadedImageUrl || activePlacementState.uploadedImage ? (
+                  {activePlacementImageSource ? (
                     <div
                       className="absolute inset-0"
                       style={{
-                        backgroundImage: `url(${activePlacementState.uploadedImageUrl || activePlacementState.uploadedImage})`,
+                        backgroundImage: `url(${activePlacementImageSource})`,
                         backgroundSize: 'contain',
                         backgroundPosition: 'center',
                         backgroundRepeat: 'no-repeat',
@@ -644,12 +920,6 @@ export default function Customizer() {
                   )}
                 </div>
 
-                {isDesignSaved && (
-                  <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm flex items-center gap-1">
-                    <Check className="w-4 h-4" />
-                    Design saved
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -659,7 +929,8 @@ export default function Customizer() {
             <h3 className="mb-4">Print Area</h3>
             <div className="grid grid-cols-2 gap-2">
               {printPlacements.map((placement) => {
-                const hasDesign = Boolean(placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl);
+                const placementState = getPlacementState(placements, placement.id);
+                const hasDesign = Boolean(placementState.uploadedImage || placementState.uploadedImageUrl);
 
                 return (
                   <button
@@ -701,10 +972,10 @@ export default function Customizer() {
               className="w-full py-3 border-2 border-dashed border-black/20 rounded flex items-center justify-center gap-2 hover:bg-[#F5F5F5] transition-colors"
             >
               <Upload className="w-5 h-5" />
-              {activePlacementState.uploadedImageUrl || activePlacementState.uploadedImage ? 'Change Image' : 'Upload Image'}
+              {activePlacementImageSource ? 'Change Image' : 'Upload Image'}
             </button>
             <p className="text-xs text-[#1A1A1A] mt-2">PNG, JPG, JPEG, WEBP, GIF</p>
-            {!activePlacementState.uploadedImageUrl && !activePlacementState.uploadedImage && (
+            {!activePlacementImageSource && (
               <p className="text-xs text-[#1A1A1A] mt-2">
                 No image uploaded for {activePlacementMeta.label.toLowerCase()} yet.
               </p>
@@ -787,6 +1058,25 @@ export default function Customizer() {
                 />
               </div>
 
+              {previewMode === '3d' && (
+                <div>
+                  <label className="flex items-center gap-2 mb-2 text-sm">
+                    <ZoomIn className="w-4 h-4" />
+                    3D Model Zoom: {modelZoom}%
+                  </label>
+                  <input
+                    type="range"
+                    min="55"
+                    max="165"
+                    value={modelZoom}
+                    onChange={(event) => {
+                      setModelZoom(Number(event.target.value));
+                    }}
+                    className="w-full"
+                  />
+                </div>
+              )}
+
               <button
                 onClick={removeDesignFromActivePlacement}
                 disabled={!activePlacementState.uploadedImage && !activePlacementState.uploadedImageUrl}
@@ -849,22 +1139,46 @@ export default function Customizer() {
           <div className="bg-white border border-black/10 rounded-lg p-4 sm:p-6">
             <h3 className="mb-4">Actions</h3>
             <div className="space-y-2">
-              <button
-                onClick={saveDesign}
-                className="w-full py-3 bg-black text-white rounded flex items-center justify-center gap-2 hover:bg-[#1A1A1A] transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                Save design
-              </button>
+              <div className="relative">
+                {showSavedAnimation && (
+                  <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-[calc(100%+0.5rem)] rounded-full border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700 shadow-sm animate-bounce">
+                    Design saved
+                  </div>
+                )}
+                <button
+                  onClick={saveDesign}
+                  disabled={!canSaveDesign}
+                  className="w-full py-3 bg-black text-white rounded flex items-center justify-center gap-2 hover:bg-[#1A1A1A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingDesign ? (
+                    <>
+                      <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      Saving...
+                    </>
+                  ) : isDesignSaved ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Design saved
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save design
+                    </>
+                  )}
+                </button>
+              </div>
               <button
                 onClick={addToCart}
                 disabled={!isDesignSaved}
                 className="w-full py-3 bg-[#7A1F2A] text-white rounded hover:bg-[#5A1520] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add to cart
+                {editingCartItemId ? 'Update cart item' : 'Add to cart'}
               </button>
-              {!isDesignSaved && printPlacements.some((placement) => placements[placement.id].uploadedImage || placements[placement.id].uploadedImageUrl) && (
-                <p className="text-xs text-[#1A1A1A] text-center">Save your design to add to cart</p>
+              {!isDesignSaved && hasDesignedPlacements && (
+                <p className="text-xs text-[#1A1A1A] text-center">
+                  Save your design to {editingCartItemId ? 'update cart' : 'add to cart'}
+                </p>
               )}
             </div>
           </div>

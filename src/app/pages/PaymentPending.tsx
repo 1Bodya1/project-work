@@ -37,9 +37,6 @@ export default function PaymentPending() {
         <p className="text-xl text-[#1A1A1A] mb-2">
           Your payment is waiting for confirmation.
         </p>
-        <p className="text-[#1A1A1A] mb-8">
-          Order number: <span className="font-medium">{orderId || 'Not available'}</span>
-        </p>
 
         <div className="bg-[#F5F5F5] rounded-lg p-6 mb-8 text-left">
           <h3 className="mb-3">Mock payment mode</h3>

@@ -2,15 +2,28 @@ import { useEffect, useState } from 'react';
 import { Mail, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '../components/StatusBadge';
+import { formatOrderDateTime } from '../lib/dateFormat';
 import { supportService } from '../services/supportService';
 import { useAuth } from '../store/AuthContext';
-import type { SupportTicket } from '../types';
+import type { SupportTicket, User } from '../types';
 
 type SupportForm = {
   subject: string;
   orderNumber: string;
   message: string;
 };
+
+function isEmailLike(value?: string) {
+  return Boolean(value && /\S+@\S+\.\S+/.test(value));
+}
+
+function getProfileCustomerName(user: User | null) {
+  const firstAndLastName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+  if (firstAndLastName) return firstAndLastName;
+
+  const profileName = user?.name?.trim();
+  return profileName && !isEmailLike(profileName) ? profileName : 'Solution customer';
+}
 
 export default function Support() {
   const { user } = useAuth();
@@ -25,8 +38,12 @@ export default function Support() {
 
   useEffect(() => {
     async function loadTickets() {
-      const nextTickets = await supportService.getMyTickets();
-      setTickets(nextTickets);
+      try {
+        const nextTickets = await supportService.getMyTickets();
+        setTickets(nextTickets);
+      } catch {
+        toast.error('Unable to load support requests');
+      }
     }
 
     loadTickets();
@@ -63,7 +80,7 @@ export default function Support() {
         userId: user?.id,
         userEmail: user?.email || 'customer@example.com',
         customer: {
-          name: user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Solution customer',
+          name: getProfileCustomerName(user),
           email: user?.email || 'customer@example.com',
         },
       });
@@ -161,7 +178,7 @@ export default function Support() {
                         <p className="text-sm text-[#1A1A1A]">
                           {ticket.orderNumber ? `Order: ${ticket.orderNumber}` : 'No order number'}
                         </p>
-                        <p className="text-sm text-[#1A1A1A]">{ticket.date}</p>
+                        <p className="text-sm text-[#1A1A1A]">{formatOrderDateTime(ticket.date)}</p>
                         <p className="text-sm text-[#1A1A1A] mt-2 line-clamp-2">{ticket.message}</p>
                       </div>
                       <StatusBadge status={ticket.status} size="sm" />

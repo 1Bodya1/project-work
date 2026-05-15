@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye, Image } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '../../components/StatusBadge';
+import { formatOrderDateTime } from '../../lib/dateFormat';
 import { adminService } from '../../services/adminService';
-import type { Order, OrderStatus } from '../../types';
+import type { CustomDesignPlacement, Order, OrderStatus } from '../../types';
 
 const orderStatusOptions: Array<{ value: OrderStatus; label: string }> = [
   { value: 'new', label: 'New' },
@@ -30,6 +31,7 @@ function isCustomizedItem(item: Order['items'][number]) {
   return Boolean(
     item.hasCustomDesign ||
       item.customDesignId ||
+      item.screenshot3dUrl ||
       item.previewUrl ||
       item.customImage ||
       item.customDesignImage ||
@@ -38,7 +40,7 @@ function isCustomizedItem(item: Order['items'][number]) {
 }
 
 function getCustomPreview(item: Order['items'][number]) {
-  return item.previewUrl || item.customDesignImage || item.customImage || item.customDesign?.previewUrl || item.image;
+  return item.screenshot3dUrl || item.previewUrl || item.customDesignImage || item.customImage || item.customDesign?.previewUrl || item.image;
 }
 
 function getUploadedDesignPreview(item: Order['items'][number]) {
@@ -46,7 +48,45 @@ function getUploadedDesignPreview(item: Order['items'][number]) {
     || item.customImage
     || item.customDesign?.uploadedImageUrl
     || item.customDesignImage
-    || item.previewUrl;
+    || '';
+}
+
+function getPlacementPreview(placement: CustomDesignPlacement) {
+  return placement.uploadedImageUrl || placement.uploadedImage || placement.previewUrl || '';
+}
+
+function truncateText(value?: string, max = 80) {
+  if (!value) return '';
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function getOrderNumber(order: Order) {
+  return order.orderNumber || order.id;
+}
+
+function getShortReference(value?: string, max = 14) {
+  if (!value) return '-';
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function getDeliveryCityLabel(city: Order['delivery']['city'] | undefined) {
+  return typeof city === 'object' && city ? city.description || city.ref || 'City not specified' : city || 'City not specified';
+}
+
+function getDeliveryWarehouseLabel(warehouse: Order['delivery']['warehouse'] | undefined) {
+  if (typeof warehouse === 'object' && warehouse) {
+    return [
+      warehouse.description,
+      warehouse.shortAddress,
+      warehouse.number ? `#${warehouse.number}` : '',
+    ].filter(Boolean).join(', ') || warehouse.ref || 'Warehouse not specified';
+  }
+
+  return warehouse || 'Warehouse not specified';
+}
+
+function isPlacement(value: unknown): value is CustomDesignPlacement {
+  return Boolean(value && typeof value === 'object');
 }
 
 function getUsedPlacementLabels(item: Order['items'][number]) {
@@ -56,7 +96,7 @@ function getUsedPlacementLabels(item: Order['items'][number]) {
   if (!placements) return [];
 
   return Object.values(placements)
-    .filter((placement) => placement.uploadedImage)
+    .filter((placement): placement is CustomDesignPlacement => isPlacement(placement) && Boolean(placement.uploadedImage || placement.uploadedImageUrl || placement.previewUrl))
     .map((placement) => placement.label || 'Placement');
 }
 
@@ -143,18 +183,18 @@ export default function AdminOrders() {
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">All Orders</h3>
             <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-              <table className="w-full min-w-[980px]">
+              <table className="w-full min-w-[1040px] table-fixed">
                 <thead>
                   <tr className="border-b border-black/10">
-                    <th className="text-left pb-3 text-sm">Order Number</th>
-                    <th className="text-left pb-3 text-sm">Customer</th>
-                    <th className="text-left pb-3 text-sm">Total</th>
-                    <th className="text-left pb-3 text-sm">Customized</th>
-                    <th className="text-left pb-3 text-sm">Payment</th>
-                    <th className="text-left pb-3 text-sm">Order Status</th>
-                    <th className="text-left pb-3 text-sm">Tracking</th>
-                    <th className="text-left pb-3 text-sm">Date</th>
-                    <th className="text-left pb-3 text-sm">Action</th>
+                    <th className="w-[155px] text-left pb-3 pr-4 text-sm">Order Number</th>
+                    <th className="w-[150px] text-left pb-3 pr-4 text-sm">Customer</th>
+                    <th className="w-[90px] text-left pb-3 pr-4 text-sm">Total</th>
+                    <th className="w-[120px] text-left pb-3 pr-4 text-sm">Customized</th>
+                    <th className="w-[110px] text-left pb-3 pr-4 text-sm">Payment</th>
+                    <th className="w-[130px] text-left pb-3 pr-4 text-sm">Order Status</th>
+                    <th className="w-[150px] text-left pb-3 pr-4 text-sm">Tracking</th>
+                    <th className="w-[150px] text-left pb-3 pr-4 text-sm">Date</th>
+                    <th className="w-[105px] text-left pb-3 text-sm">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,10 +225,16 @@ export default function AdminOrders() {
                       }`}
                       onClick={() => setSelectedOrderId(order.id)}
                     >
-                      <td className="py-4">{order.id}</td>
-                      <td className="py-4">{order.customer?.name || 'Customer'}</td>
-                      <td className="py-4">₴{order.total}</td>
-                      <td className="py-4">
+                      <td className="py-4 pr-4">
+                        <span className="block truncate font-mono text-xs" title={getOrderNumber(order)}>
+                          {getShortReference(getOrderNumber(order))}
+                        </span>
+                      </td>
+                      <td className="py-4 pr-4">
+                        <span className="block truncate">{order.customer?.name || 'Customer'}</span>
+                      </td>
+                      <td className="py-4 pr-4 whitespace-nowrap">₴{order.total}</td>
+                      <td className="py-4 pr-4">
                         {order.items.some(isCustomizedItem) ? (
                           <span className="inline-block px-2 py-1 text-xs rounded bg-green-100 text-green-800">
                             Customized
@@ -197,14 +243,25 @@ export default function AdminOrders() {
                           <span className="text-sm text-[#1A1A1A]">No</span>
                         )}
                       </td>
-                      <td className="py-4">
+                      <td className="py-4 pr-4">
                         <StatusBadge status={order.paymentStatus} size="sm" />
                       </td>
-                      <td className="py-4">
+                      <td className="py-4 pr-4">
                         <StatusBadge status={getOrderStatus(order)} size="sm" />
                       </td>
-                      <td className="py-4 text-[#1A1A1A]">{order.trackingNumber || '-'}</td>
-                      <td className="py-4 text-[#1A1A1A]">{order.date}</td>
+                      <td className="py-4 pr-4 text-[#1A1A1A]">
+                        {order.trackingNumber ? (
+                          <span
+                            className="inline-block max-w-full truncate rounded bg-[#F5F5F5] px-2 py-1 font-mono text-xs text-[#1A1A1A]"
+                            title={order.trackingNumber}
+                          >
+                            {getShortReference(order.trackingNumber)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-[#1A1A1A]">-</span>
+                        )}
+                      </td>
+                      <td className="py-4 pr-4 text-[#1A1A1A] whitespace-nowrap">{formatOrderDateTime(order.date)}</td>
                       <td className="py-4">
                         <button
                           type="button"
@@ -231,7 +288,7 @@ export default function AdminOrders() {
               <div className="space-y-4 mb-6">
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Order Number</p>
-                  <p>{selectedOrder.id}</p>
+                  <p className="break-all font-mono text-sm">{getOrderNumber(selectedOrder)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Customer</p>
@@ -242,8 +299,8 @@ export default function AdminOrders() {
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Delivery</p>
                   <p className="text-sm">{selectedOrder.delivery?.provider || 'Nova Poshta'}</p>
-                  <p className="text-sm">{selectedOrder.delivery?.city || 'City not specified'}</p>
-                  <p className="text-sm">{selectedOrder.delivery?.warehouse || 'Warehouse not specified'}</p>
+                  <p className="text-sm">{getDeliveryCityLabel(selectedOrder.delivery?.city)}</p>
+                  <p className="text-sm">{getDeliveryWarehouseLabel(selectedOrder.delivery?.warehouse)}</p>
                 </div>
               </div>
 
@@ -326,56 +383,67 @@ export default function AdminOrders() {
                             </div>
                           )}
 
-                          <div className="space-y-1 text-xs text-[#1A1A1A] break-all">
-                            <p>
-                              <span className="text-black">customDesignId:</span>{' '}
-                              {item.customDesignId || '-'}
-                            </p>
-                            <p>
-                              <span className="text-black">Size:</span> {item.size || '-'}{' '}
-                              <span className="text-black">Color:</span> {item.color || '-'}
-                            </p>
-                            <p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#1A1A1A]">
+                            <p><span className="text-black">Quantity:</span> {item.quantity || 1}</p>
+                            <p><span className="text-black">Price:</span> ₴{item.price || 0}</p>
+                            <p><span className="text-black">Size:</span> {item.size || '-'}</p>
+                            <p><span className="text-black">Color:</span> {item.color || '-'}</p>
+                            <p className="sm:col-span-2">
                               <span className="text-black">Used placements:</span>{' '}
                               {usedPlacements.length > 0 ? usedPlacements.join(', ') : '-'}
                             </p>
-                            <p>
-                              <span className="text-black">previewUrl:</span>{' '}
-                              {item.previewUrl || customPreview || '-'}
-                            </p>
-                            <p>
-                              <span className="text-black">Position:</span>{' '}
-                              {item.designPosition
-                                ? `x ${item.designPosition.x}, y ${item.designPosition.y}`
-                                : '-'}
-                            </p>
-                            <p>
-                              <span className="text-black">Scale:</span>{' '}
-                              {item.designScale ?? '-'}
-                            </p>
-                            <p>
-                              <span className="text-black">Rotation:</span>{' '}
-                              {item.designRotation ?? '-'}
-                            </p>
+                            {item.customDesignId && (
+                              <p className="sm:col-span-2">
+                                <span className="text-black">Design ID:</span>{' '}
+                                {truncateText(item.customDesignId, 60)}
+                              </p>
+                            )}
+                            {item.designPosition && (
+                              <p>
+                                <span className="text-black">Position:</span>{' '}
+                                x {item.designPosition.x}, y {item.designPosition.y}
+                              </p>
+                            )}
+                            {item.designScale !== undefined && (
+                              <p><span className="text-black">Scale:</span> {item.designScale}</p>
+                            )}
+                            {item.designRotation !== undefined && (
+                              <p><span className="text-black">Rotation:</span> {item.designRotation}</p>
+                            )}
                           </div>
 
                           {item.customDesignPlacements && (
                             <div className="space-y-2">
                               <p className="text-xs">Placement Metadata</p>
                               {Object.entries(item.customDesignPlacements)
-                                .filter(([, placement]) => placement.uploadedImage)
+                                .filter(([, placement]): placement is [string, CustomDesignPlacement] => (
+                                  isPlacement(placement) && Boolean(placement.uploadedImage || placement.uploadedImageUrl || placement.previewUrl)
+                                ))
                                 .map(([placementId, placement]) => (
                                   <div key={placementId} className="bg-white rounded p-2 text-xs text-[#1A1A1A]">
-                                    <p className="text-black">{placement.label || placementId}</p>
-                                    <p>Position: x {placement.position.x}, y {placement.position.y}</p>
-                                    <p>Scale: {placement.scale}</p>
-                                    <p>Rotation: {placement.rotation}</p>
-                                    {placement.printArea && (
-                                      <p>
-                                        Print area: x {placement.printArea.x}, y {placement.printArea.y}, w{' '}
-                                        {placement.printArea.width}, h {placement.printArea.height}
-                                      </p>
-                                    )}
+                                    <div className="flex gap-3">
+                                      {getPlacementPreview(placement) && (
+                                        <div className="w-16 h-16 bg-[#F5F5F5] rounded overflow-hidden border border-black/5 flex-shrink-0">
+                                          <img
+                                            src={getPlacementPreview(placement)}
+                                            alt={placement.label || placementId}
+                                            className="w-full h-full object-contain p-1"
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="space-y-1">
+                                        <p className="text-black">{placement.label || placementId}</p>
+                                        <p>Position: x {placement.position?.x ?? 0}, y {placement.position?.y ?? 0}</p>
+                                        <p>Scale: {placement.scale ?? '-'}</p>
+                                        <p>Rotation: {placement.rotation ?? '-'}</p>
+                                        {placement.printArea && (
+                                          <p>
+                                            Print area: x {placement.printArea.x}, y {placement.printArea.y}, w{' '}
+                                            {placement.printArea.width}, h {placement.printArea.height}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                 ))}
                             </div>
@@ -420,6 +488,11 @@ export default function AdminOrders() {
                       className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 focus:ring-[#7A1F2A]"
                       placeholder="NP20269876543210"
                     />
+                    {draftTrackingNumber && (
+                      <p className="mt-2 break-all rounded bg-[#F5F5F5] px-3 py-2 font-mono text-xs text-[#1A1A1A]">
+                        {draftTrackingNumber}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-[#1A1A1A] mb-1">Delivery Status</p>

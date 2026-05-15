@@ -1,29 +1,171 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import { ProductCard } from '../components/ProductCard';
 import { ProductCardSkeleton } from '../components/LoadingState';
 import { Search, SlidersHorizontal, X, ShoppingBag } from 'lucide-react';
-import { getProductMockup } from '../lib/productMockups';
 import { productService } from '../services/productService';
-import type { Category, Product } from '../types';
+import type { Category, Product, ProductType } from '../types';
 
 type SortOption = 'newest' | 'price-asc' | 'price-desc';
 
-const colorOptions = ['#FFFFFF', '#000000', '#7A1F2A', '#F5F5F5', '#1A1A1A'];
-const sizeOptions = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const sortOptions: SortOption[] = ['newest', 'price-asc', 'price-desc'];
+
+function getSortParam(value: string | null): SortOption {
+  return sortOptions.includes(value as SortOption) ? value as SortOption : 'newest';
+}
+
+function normalizeCategoryParam(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return normalized.endsWith('s') ? normalized.slice(0, -1) : normalized;
+}
+
+function isSelectedCategory(selectedCategory: string, item: Category) {
+  if (!selectedCategory) return false;
+
+  const selected = normalizeCategoryParam(selectedCategory);
+  const candidates = [
+    item.name,
+    item.slug,
+    item.id,
+  ].filter(Boolean).map((value) => normalizeCategoryParam(String(value)));
+
+  return candidates.includes(selected);
+}
+
+function getProductTypeFromValue(value?: string | null): ProductType | null {
+  const normalizedValue = normalizeCategoryParam(value || '');
+  if (normalizedValue === 'mug') return 'mug';
+  if (normalizedValue === 'laptop') return 'laptop';
+  if (normalizedValue === 'tshirt' || normalizedValue === 'tee' || normalizedValue === 'shirt') return 'tshirt';
+  return null;
+}
+
+function getSelectedProductType(category: string, products: Product[]): ProductType | null {
+  const categoryProductType = getProductTypeFromValue(category);
+  if (categoryProductType) return categoryProductType;
+
+  const matchedProduct = products.find((product) => {
+    const productCategory = getProductTypeFromValue(product.category);
+    const productType = getProductTypeFromValue(product.productType);
+
+    return Boolean(productCategory || productType);
+  });
+  const productType = getProductTypeFromValue(matchedProduct?.productType)
+    || getProductTypeFromValue(matchedProduct?.category);
+
+  return productType;
+}
+
+function isSizeAllowedForProductType(size: string, productType: ProductType | null) {
+  const normalizedSize = size.trim().toLowerCase();
+  if (!normalizedSize) return false;
+
+  if (productType === 'mug') return /\bml\b|мл/.test(normalizedSize);
+  if (productType === 'laptop') return /\binch\b|\bin\b|"/.test(normalizedSize);
+  if (productType === 'tshirt') return !(/\bml\b|мл|\binch\b|\bin\b|"/.test(normalizedSize));
+
+  return true;
+}
+
+function getSizeSortValue(size: string) {
+  const numericValue = Number(size.match(/\d+(\.\d+)?/)?.[0]);
+  return Number.isFinite(numericValue) ? numericValue : Number.MAX_SAFE_INTEGER;
+}
+
+function getUniqueSortedSizes(products: Product[], productType: ProductType | null) {
+  return Array.from(
+    new Set(
+      products
+        .flatMap((product) => product.sizes || [])
+        .map(String)
+        .filter((item) => isSizeAllowedForProductType(item, productType)),
+    ),
+  ).sort((firstSize, secondSize) => {
+    const firstNumericValue = getSizeSortValue(firstSize);
+    const secondNumericValue = getSizeSortValue(secondSize);
+    if (firstNumericValue !== secondNumericValue) return firstNumericValue - secondNumericValue;
+    return firstSize.localeCompare(secondSize);
+  });
+}
+
+function getUniqueColors(products: Product[]) {
+  return Array.from(
+    new Set(
+      products
+        .flatMap((product) => (
+          product.colorOptions?.length
+            ? product.colorOptions.map((option) => option.hex)
+            : product.colors || []
+        ))
+        .map(String)
+        .filter(Boolean),
+    ),
+  );
+}
 
 export default function Catalog() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchParamsString = searchParams.toString();
   const [showFilters, setShowFilters] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
+  const [categoryFilterProducts, setCategoryFilterProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [category, setCategory] = useState('');
-  const [color, setColor] = useState('');
-  const [size, setSize] = useState('');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [sort, setSort] = useState<SortOption>('newest');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
+  const [category, setCategory] = useState(() => searchParams.get('category') || '');
+  const [color, setColor] = useState(() => searchParams.get('color') || '');
+  const [size, setSize] = useState(() => searchParams.get('size') || '');
+  const [minPrice, setMinPrice] = useState(() => searchParams.get('minPrice') || '');
+  const [maxPrice, setMaxPrice] = useState(() => searchParams.get('maxPrice') || '');
+  const [sort, setSort] = useState<SortOption>(() => getSortParam(searchParams.get('sort')));
+  const selectedProductType = useMemo(
+    () => getSelectedProductType(category, categoryFilterProducts),
+    [category, categoryFilterProducts],
+  );
+  const availableColorOptions = useMemo(
+    () => (category ? getUniqueColors(categoryFilterProducts) : []),
+    [category, categoryFilterProducts],
+  );
+  const availableSizeOptions = useMemo(
+    () => (category ? getUniqueSortedSizes(categoryFilterProducts, selectedProductType) : []),
+    [category, categoryFilterProducts, selectedProductType],
+  );
+
+  useEffect(() => {
+    const nextSearchParams = new URLSearchParams(searchParamsString);
+    const nextSearchQuery = nextSearchParams.get('search') || '';
+    const nextCategory = nextSearchParams.get('category') || '';
+    const nextColor = nextSearchParams.get('color') || '';
+    const nextSize = nextSearchParams.get('size') || '';
+    const nextMinPrice = nextSearchParams.get('minPrice') || '';
+    const nextMaxPrice = nextSearchParams.get('maxPrice') || '';
+    const nextSort = getSortParam(nextSearchParams.get('sort'));
+
+    setSearchQuery((currentValue) => (currentValue === nextSearchQuery ? currentValue : nextSearchQuery));
+    setCategory((currentValue) => (currentValue === nextCategory ? currentValue : nextCategory));
+    setColor((currentValue) => (currentValue === nextColor ? currentValue : nextColor));
+    setSize((currentValue) => (currentValue === nextSize ? currentValue : nextSize));
+    setMinPrice((currentValue) => (currentValue === nextMinPrice ? currentValue : nextMinPrice));
+    setMaxPrice((currentValue) => (currentValue === nextMaxPrice ? currentValue : nextMaxPrice));
+    setSort((currentValue) => (currentValue === nextSort ? currentValue : nextSort));
+  }, [searchParamsString]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+
+    if (searchQuery) nextParams.set('search', searchQuery);
+    if (category) nextParams.set('category', category);
+    if (color) nextParams.set('color', color);
+    if (size) nextParams.set('size', size);
+    if (minPrice) nextParams.set('minPrice', minPrice);
+    if (maxPrice) nextParams.set('maxPrice', maxPrice);
+    if (sort !== 'newest') nextParams.set('sort', sort);
+
+    if (nextParams.toString() !== searchParamsString) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [category, color, maxPrice, minPrice, searchParamsString, searchQuery, setSearchParams, size, sort]);
 
   useEffect(() => {
     let isMounted = true;
@@ -50,10 +192,10 @@ export default function Catalog() {
           setProducts(nextProducts);
           setCategories(nextCategories);
         }
-      } catch {
+      } catch (error) {
+        console.error('Unable to load catalog products:', error);
         if (isMounted) {
-          setProducts([]);
-          setErrorMessage('Unable to load products. Please try again.');
+          setErrorMessage(error instanceof Error ? error.message : 'Unable to load products. Please try again.');
         }
       } finally {
         if (isMounted) {
@@ -69,6 +211,37 @@ export default function Catalog() {
     };
   }, [searchQuery, category, color, size, minPrice, maxPrice, sort]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!category) {
+      setCategoryFilterProducts([]);
+      setColor('');
+      setSize('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    productService.getProducts({ category })
+      .then((nextProducts) => {
+        if (isMounted) setCategoryFilterProducts(nextProducts);
+      })
+      .catch(() => {
+        if (isMounted) setCategoryFilterProducts([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [category]);
+
+  useEffect(() => {
+    if (!category) return;
+    if (color && !availableColorOptions.includes(color)) setColor('');
+    if (size && !availableSizeOptions.includes(size)) setSize('');
+  }, [availableColorOptions, availableSizeOptions, category, color, size]);
+
   function clearFilters() {
     setSearchQuery('');
     setCategory('');
@@ -77,6 +250,12 @@ export default function Catalog() {
     setMinPrice('');
     setMaxPrice('');
     setSort('newest');
+  }
+
+  function handleCategoryChange(nextCategory: string) {
+    setCategory(nextCategory);
+    setColor('');
+    setSize('');
   }
 
   return (
@@ -137,7 +316,7 @@ export default function Catalog() {
                   type="radio"
                   name="category"
                   checked={category === ''}
-                  onChange={() => setCategory('')}
+                  onChange={() => handleCategoryChange('')}
                   className="rounded"
                 />
                 <span className="text-sm">All</span>
@@ -147,8 +326,8 @@ export default function Catalog() {
                   <input
                     type="radio"
                     name="category"
-                    checked={category === item.name}
-                    onChange={() => setCategory(item.name)}
+                    checked={isSelectedCategory(category, item)}
+                    onChange={() => handleCategoryChange(item.name)}
                     className="rounded"
                   />
                   <span className="text-sm">{item.name}</span>
@@ -178,37 +357,45 @@ export default function Catalog() {
               </div>
             </div>
 
-            <h3 className="mb-4">Color</h3>
-            <div className="flex gap-2 mb-6 flex-wrap">
-              {colorOptions.map((item) => (
-                <button
-                  key={item}
-                  onClick={() => setColor(color === item ? '' : item)}
-                  className={`w-8 h-8 rounded-full border cursor-pointer hover:scale-110 transition-transform ${
-                    color === item ? 'border-[#7A1F2A] ring-2 ring-[#7A1F2A]/30' : 'border-black/10'
-                  }`}
-                  style={{ backgroundColor: item }}
-                  aria-label={`Filter by color ${item}`}
-                />
-              ))}
-            </div>
+            {category && availableColorOptions.length > 0 && (
+              <>
+                <h3 className="mb-4">Color</h3>
+                <div className="flex gap-2 mb-6 flex-wrap">
+                  {availableColorOptions.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => setColor(color === item ? '' : item)}
+                      className={`w-8 h-8 rounded-full border cursor-pointer hover:scale-110 transition-transform ${
+                        color === item ? 'border-[#7A1F2A] ring-2 ring-[#7A1F2A]/30' : 'border-black/10'
+                      }`}
+                      style={{ backgroundColor: item }}
+                      aria-label={`Filter by color ${item}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
 
-            <h3 className="mb-4">Size</h3>
-            <div className="grid grid-cols-3 gap-2">
-              {sizeOptions.map((item) => (
-                <button
-                  key={item}
-                  onClick={() => setSize(size === item ? '' : item)}
-                  className={`px-3 py-2 border rounded text-sm transition-colors ${
-                    size === item
-                      ? 'bg-black text-white border-black'
-                      : 'border-black/10 hover:bg-[#F5F5F5]'
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
+            {category && availableSizeOptions.length > 0 && (
+              <>
+                <h3 className="mb-4">Size</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {availableSizeOptions.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => setSize(size === item ? '' : item)}
+                      className={`px-3 py-2 border rounded text-sm transition-colors ${
+                        size === item
+                          ? 'bg-black text-white border-black'
+                          : 'border-black/10 hover:bg-[#F5F5F5]'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <button
               onClick={() => setShowFilters(false)}
@@ -275,7 +462,6 @@ export default function Catalog() {
                 <ProductCard
                   key={product.id}
                   {...product}
-                  image={getProductMockup(product, 'front', product.colors?.[0])}
                 />
               ))}
             </div>

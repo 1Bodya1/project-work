@@ -1,21 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { cartService } from '../services/cartService';
 import type { CartItem } from '../types';
 
 type AddCartItemData = Omit<CartItem, 'id'>;
-type UpdateCartItemData = Partial<
-  Pick<
-    CartItem,
-    | 'quantity'
-    | 'size'
-    | 'color'
-    | 'customImage'
-    | 'customDesignId'
-    | 'designId'
-    | 'isCustomized'
-    | 'hasCustomDesign'
-  >
->;
+type UpdateCartItemData = Partial<Omit<CartItem, 'id'>>;
 
 type CartContextValue = {
   items: CartItem[];
@@ -26,13 +14,15 @@ type CartContextValue = {
   updateItem: (itemId: string, data: UpdateCartItemData) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
+  restorePendingPaymentCart: () => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const storedCart = cartService.getStoredCart();
+  const [items, setItems] = useState<CartItem[]>(() => storedCart.items);
+  const [isLoading, setIsLoading] = useState(() => storedCart.items.length === 0);
   const totalPrice = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   async function syncCart(action: () => Promise<{ items: CartItem[] }>) {
@@ -64,9 +54,39 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     await syncCart(() => cartService.clearCart());
   }
 
+  const restorePendingPaymentCart = useCallback(() => {
+    if (!cartService.hasRecoverableCart()) return;
+
+    const cart = cartService.restorePendingPaymentCart();
+    setItems(cart.items);
+    setIsLoading(false);
+  }, []);
+
   useEffect(() => {
     getCart();
   }, []);
+
+  useEffect(() => {
+    function restoreCartAfterReturn() {
+      restorePendingPaymentCart();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        restoreCartAfterReturn();
+      }
+    }
+
+    window.addEventListener('pageshow', restoreCartAfterReturn);
+    window.addEventListener('focus', restoreCartAfterReturn);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pageshow', restoreCartAfterReturn);
+      window.removeEventListener('focus', restoreCartAfterReturn);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [restorePendingPaymentCart]);
 
   const value = useMemo(
     () => ({
@@ -78,8 +98,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       updateItem,
       removeItem,
       clearCart,
+      restorePendingPaymentCart,
     }),
-    [isLoading, items, totalPrice],
+    [isLoading, items, restorePendingPaymentCart, totalPrice],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -1,10 +1,11 @@
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Component, Suspense, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Environment, Html, OrbitControls, useGLTF, useTexture } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const T_SHIRT_MODEL_PATH = '/models/tshirt.glb';
 const FALLBACK_T_SHIRT_MODEL_PATH = '/models/t_shirt.glb';
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 const TARGET_MODEL_HEIGHT = 2.28;
 const FRONT_BODY_MESH_NAMES = new Set(['Object_4', 'Object_6']);
 const SHOW_UV_DEBUG_MARK = false;
@@ -196,6 +197,12 @@ type ProductPreview3DProps = {
   activePlacement?: PrintPlacement;
   placements?: Partial<Record<PrintPlacement, ProductPreviewPlacementData>>;
   currentPlacementData?: ProductPreviewPlacementData;
+  modelUrl?: string | null;
+  modelZoom?: number;
+};
+
+export type ProductPreview3DHandle = {
+  capture3DScreenshot: () => string | null;
 };
 
 type ProductPreviewPlacementData = {
@@ -225,12 +232,73 @@ function normalizeModel(scene: THREE.Object3D) {
 }
 
 function getPlacementImageSource(placement?: ProductPreviewPlacementData | null) {
-  return placement?.uploadedImageUrl || placement?.uploadedImage || placement?.previewUrl || null;
+  return placement?.uploadedImage || placement?.previewUrl || placement?.uploadedImageUrl || null;
+}
+
+function getCameraDistance(baseDistance: number, modelZoom = 100) {
+  return baseDistance * (100 / THREE.MathUtils.clamp(modelZoom, 55, 165));
+}
+
+function CameraZoomSync({ modelZoom }: { modelZoom?: number }) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    camera.position.z = getCameraDistance(4.75, modelZoom);
+    camera.updateProjectionMatrix();
+  }, [camera, modelZoom]);
+
+  return null;
+}
+
+function resolveModelUrl(modelUrl?: string | null) {
+  const trimmedModelUrl = String(modelUrl || '').trim();
+  if (!trimmedModelUrl) return T_SHIRT_MODEL_PATH;
+  if (/^(https?:|data:|blob:)/i.test(trimmedModelUrl)) return trimmedModelUrl;
+  if (trimmedModelUrl.startsWith('/uploads/')) return `${API_ORIGIN}${trimmedModelUrl}`;
+  return trimmedModelUrl;
+}
+
+function isModelResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  return response.ok && !contentType.toLowerCase().includes('text/html');
+}
+
+class ModelErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode; resetKey: string },
+  { hasError: boolean; resetKey: string }
+> {
+  state = { hasError: false, resetKey: this.props.resetKey };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  static getDerivedStateFromProps(
+    props: { resetKey: string },
+    state: { hasError: boolean; resetKey: string },
+  ) {
+    if (props.resetKey !== state.resetKey) {
+      return { hasError: false, resetKey: props.resetKey };
+    }
+
+    return null;
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('3D model could not be loaded:', error);
+  }
+
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
 }
 
 function loadPlacementImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
+    if (/^https?:\/\//i.test(src)) {
+      image.crossOrigin = 'anonymous';
+    }
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = src;
@@ -396,8 +464,10 @@ function GarmentModelWithDecal({
   color,
   placement,
   placements,
+  modelUrl,
 }: ProductPreview3DProps & { placement: PrintPlacement }) {
-  const gltf = useGLTF(T_SHIRT_MODEL_PATH);
+  const resolvedModelUrl = resolveModelUrl(modelUrl);
+  const gltf = useGLTF(resolvedModelUrl);
   const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   const transform = useMemo(() => normalizeModel(scene), [scene]);
   const [shirtTexture, setShirtTexture] = useState<THREE.CanvasTexture | null>(null);
@@ -526,7 +596,7 @@ function GarmentModelWithDecal({
   );
 }
 
-export function ProductPreview3D({
+export const ProductPreview3D = forwardRef<ProductPreview3DHandle, ProductPreview3DProps>(function ProductPreview3D({
   designImage,
   position = { x: 50, y: 50 },
   scale = 50,
@@ -536,12 +606,16 @@ export function ProductPreview3D({
   activePlacement,
   placements,
   currentPlacementData,
-}: ProductPreview3DProps) {
+  modelUrl,
+  modelZoom,
+}, ref) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [modelStatus, setModelStatus] = useState<'checking' | 'ready' | 'missing'>('checking');
+  const [effectiveModelUrl, setEffectiveModelUrl] = useState(resolveModelUrl(modelUrl));
   const resolvedPlacement = activePlacement || placement;
-  const resolvedDesignImage = currentPlacementData?.uploadedImageUrl
-    || currentPlacementData?.uploadedImage
+  const resolvedDesignImage = currentPlacementData?.uploadedImage
     || currentPlacementData?.previewUrl
+    || currentPlacementData?.uploadedImageUrl
     || designImage;
   const resolvedPosition = currentPlacementData?.position || position;
   const resolvedScale = currentPlacementData?.scale ?? scale;
@@ -549,19 +623,80 @@ export function ProductPreview3D({
 
   useEffect(() => {
     let isMounted = true;
+    const nextModelUrl = resolveModelUrl(modelUrl);
 
-    fetch(T_SHIRT_MODEL_PATH, { method: 'HEAD' })
+    setModelStatus('checking');
+    setEffectiveModelUrl(nextModelUrl);
+
+    if (/^(https?:|data:|blob:)/i.test(nextModelUrl)) {
+      setModelStatus('ready');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    fetch(nextModelUrl, { method: 'HEAD' })
       .then((response) => {
-        if (isMounted) setModelStatus(response.ok ? 'ready' : 'missing');
+        if (!isMounted) return;
+
+        if (isModelResponse(response)) {
+          setEffectiveModelUrl(nextModelUrl);
+          setModelStatus('ready');
+          return;
+        }
+
+        if (nextModelUrl !== T_SHIRT_MODEL_PATH) {
+          fetch(T_SHIRT_MODEL_PATH, { method: 'HEAD' })
+            .then((fallbackResponse) => {
+              if (!isMounted) return;
+              setEffectiveModelUrl(T_SHIRT_MODEL_PATH);
+              setModelStatus(isModelResponse(fallbackResponse) ? 'ready' : 'missing');
+            })
+            .catch(() => {
+              if (isMounted) setModelStatus('missing');
+            });
+          return;
+        }
+
+        setModelStatus('missing');
       })
       .catch(() => {
-        if (isMounted) setModelStatus('missing');
+        if (!isMounted) return;
+
+        if (nextModelUrl !== T_SHIRT_MODEL_PATH) {
+          fetch(T_SHIRT_MODEL_PATH, { method: 'HEAD' })
+            .then((fallbackResponse) => {
+              if (!isMounted) return;
+              setEffectiveModelUrl(T_SHIRT_MODEL_PATH);
+              setModelStatus(isModelResponse(fallbackResponse) ? 'ready' : 'missing');
+            })
+            .catch(() => {
+              if (isMounted) setModelStatus('missing');
+            });
+          return;
+        }
+
+        setModelStatus('missing');
       });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [modelUrl]);
+
+  useImperativeHandle(ref, () => ({
+    capture3DScreenshot() {
+      try {
+        return canvasRef.current?.toDataURL('image/webp', 0.82) || null;
+      } catch {
+        try {
+          return canvasRef.current?.toDataURL('image/png') || null;
+        } catch {
+          return null;
+        }
+      }
+    },
+  }), []);
 
   if (modelStatus === 'checking') {
     return (
@@ -586,38 +721,54 @@ export function ProductPreview3D({
 
   return (
     <div className="w-full h-[460px] bg-[#F5F5F5] rounded-lg overflow-hidden">
-      <Canvas
-        camera={{ position: [0, 0.15, 4.75], fov: 36 }}
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+      <ModelErrorBoundary
+        resetKey={effectiveModelUrl}
+        fallback={
+          <div className="w-full h-full flex items-center justify-center p-6 text-center">
+            <p>3D model could not be loaded.</p>
+          </div>
+        }
       >
-        <color attach="background" args={['#F5F5F5']} />
-        <ambientLight intensity={0.9} />
-        <directionalLight position={[3, 4, 4]} intensity={1.7} />
-        <directionalLight position={[-3, 2, 3]} intensity={0.65} />
-        <Suspense fallback={<Html center>Loading model...</Html>}>
-          <GarmentModelWithDecal
-            designImage={resolvedDesignImage}
-            position={resolvedPosition}
-            scale={resolvedScale}
-            rotation={resolvedRotation}
-            color={color}
-            placement={resolvedPlacement}
-            placements={placements}
+        <Canvas
+          camera={{ position: [0, 0.15, getCameraDistance(4.75, modelZoom)], fov: 36 }}
+          dpr={[1, 2]}
+          gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
+          onCreated={({ gl }) => {
+            canvasRef.current = gl.domElement;
+          }}
+        >
+          <CameraZoomSync modelZoom={modelZoom} />
+          <color attach="background" args={['#F5F5F5']} />
+          <ambientLight intensity={0.9} />
+          <directionalLight position={[3, 4, 4]} intensity={1.7} />
+          <directionalLight position={[-3, 2, 3]} intensity={0.65} />
+          <Suspense fallback={<Html center>Loading model...</Html>}>
+            <GarmentModelWithDecal
+              designImage={resolvedDesignImage}
+              position={resolvedPosition}
+              scale={resolvedScale}
+              rotation={resolvedRotation}
+              color={color}
+              placement={resolvedPlacement}
+              placements={placements}
+              modelUrl={effectiveModelUrl}
+            />
+            <Environment preset="studio" />
+          </Suspense>
+          <OrbitControls
+            enablePan={false}
+            enableZoom={false}
+            minDistance={2.2}
+            maxDistance={7.2}
+            minPolarAngle={Math.PI / 2.5}
+            maxPolarAngle={Math.PI / 1.65}
+            rotateSpeed={0.75}
+            target={[0, 0, 0]}
           />
-          <Environment preset="studio" />
-        </Suspense>
-        <OrbitControls
-          enablePan={false}
-          enableZoom={false}
-          minPolarAngle={Math.PI / 2.5}
-          maxPolarAngle={Math.PI / 1.65}
-          rotateSpeed={0.75}
-          target={[0, 0, 0]}
-        />
-      </Canvas>
+        </Canvas>
+      </ModelErrorBoundary>
     </div>
   );
-}
+});
 
 useGLTF.preload(T_SHIRT_MODEL_PATH);

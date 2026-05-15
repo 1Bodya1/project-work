@@ -1,25 +1,52 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { useCart } from '../store/CartContext';
+import { useAuth } from '../store/AuthContext';
+import { deliveryService } from '../services/deliveryService';
+import { cartService } from '../services/cartService';
 import { orderService } from '../services/orderService';
 import { paymentService } from '../services/paymentService';
+import type { NovaPoshtaCity, NovaPoshtaWarehouse } from '../types';
 
-type PaymentMethod = 'monobank' | 'liqpay' | '';
+type PaymentMethod = 'monobank' | '';
+
+function uniqueCities(cities: NovaPoshtaCity[]) {
+  return Array.from(new Map(cities.map((city) => [city.ref, city])).values());
+}
+
+function uniqueWarehouses(warehouses: NovaPoshtaWarehouse[]) {
+  return Array.from(new Map(warehouses.map((warehouse) => [warehouse.ref, warehouse])).values());
+}
 
 export default function Checkout() {
   const navigate = useNavigate();
   const { items: cartItems, isLoading: isCartLoading, clearCart } = useCart();
+  const { user } = useAuth();
+  const didPrefillFromProfile = useRef(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('monobank');
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     phone: '',
     email: '',
-    city: '',
-    warehouse: '',
+    citySearch: '',
+    selectedCity: null as NovaPoshtaCity | null,
+    warehouseSearch: '',
+    selectedWarehouse: null as NovaPoshtaWarehouse | null,
     deliveryComment: '',
   });
+  const [cities, setCities] = useState<NovaPoshtaCity[]>([]);
+  const [citySearchResults, setCitySearchResults] = useState<NovaPoshtaCity[]>([]);
+  const [warehouseOptions, setWarehouseOptions] = useState<NovaPoshtaWarehouse[]>([]);
+  const [warehouseSearchResults, setWarehouseSearchResults] = useState<NovaPoshtaWarehouse[]>([]);
+  const [isLoadingCities, setIsLoadingCities] = useState(false);
+  const [isSearchingCities, setIsSearchingCities] = useState(false);
+  const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(false);
+  const [isSearchingWarehouses, setIsSearchingWarehouses] = useState(false);
+  const [hasLoadedCities, setHasLoadedCities] = useState(false);
+  const [hasInteractedWithCity, setHasInteractedWithCity] = useState(false);
+  const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
@@ -28,10 +55,197 @@ export default function Checkout() {
   const shipping = subtotal > 1000 ? 0 : 50;
   const total = subtotal + shipping;
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const filteredCities = formData.citySearch.trim()
+    ? cities.filter((city) =>
+        `${city.description} ${city.areaDescription || ''} ${city.settlementTypeDescription || ''}`
+          .toLowerCase()
+          .includes(formData.citySearch.trim().toLowerCase()),
+      )
+    : cities;
+  const cityOptions = uniqueCities(
+    formData.citySearch.trim()
+      ? [...citySearchResults, ...filteredCities]
+      : cities,
+  );
+  const filteredWarehouses = formData.warehouseSearch.trim()
+    ? warehouseOptions.filter((warehouse) =>
+        `${warehouse.description} ${warehouse.shortAddress || ''} ${warehouse.number || ''}`
+          .toLowerCase()
+          .includes(formData.warehouseSearch.trim().toLowerCase()),
+      )
+    : warehouseOptions;
+  const displayedWarehouses = uniqueWarehouses(
+    formData.warehouseSearch.trim()
+      ? [...warehouseSearchResults, ...filteredWarehouses]
+      : warehouseOptions,
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingCities(true);
+    deliveryService.getCities()
+      .then((nextCities) => {
+        if (isMounted) setCities(nextCities);
+      })
+      .catch(() => {
+        if (isMounted) setCities([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setHasLoadedCities(true);
+          setIsLoadingCities(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || didPrefillFromProfile.current) return;
+
+    const [fallbackFirstName = '', ...fallbackLastName] = (user.name || '').split(' ').filter(Boolean);
+    const profileCity = user.city?.ref && user.city.description
+      ? {
+          ref: user.city.ref,
+          description: user.city.description,
+        }
+      : null;
+    const profileWarehouse = profileCity && user.novaPoshtaWarehouse?.ref && user.novaPoshtaWarehouse.description
+      ? {
+          ref: user.novaPoshtaWarehouse.ref,
+          description: user.novaPoshtaWarehouse.description,
+          shortAddress: user.novaPoshtaWarehouse.shortAddress,
+          number: user.novaPoshtaWarehouse.number,
+        }
+      : null;
+
+    setFormData((currentData) => ({
+      ...currentData,
+      firstName: currentData.firstName || user.firstName || fallbackFirstName,
+      lastName: currentData.lastName || user.lastName || fallbackLastName.join(' '),
+      phone: currentData.phone || user.phone || '',
+      email: currentData.email || user.email || '',
+      citySearch: currentData.citySearch || profileCity?.description || '',
+      selectedCity: currentData.selectedCity || profileCity,
+      selectedWarehouse: currentData.selectedWarehouse || profileWarehouse,
+      warehouseSearch: currentData.warehouseSearch || profileWarehouse?.description || '',
+    }));
+    didPrefillFromProfile.current = true;
+  }, [user]);
+
+  useEffect(() => {
+    const search = formData.citySearch.trim();
+    if (!isCityDropdownOpen || formData.selectedCity || search.length < 2) {
+      setCitySearchResults([]);
+      return;
+    }
+
+    let isMounted = true;
+    const timeoutId = window.setTimeout(() => {
+      setIsSearchingCities(true);
+      deliveryService.searchCities(search)
+        .then((nextCities) => {
+          if (isMounted) setCitySearchResults(nextCities);
+        })
+        .catch(() => {
+          if (isMounted) setCitySearchResults([]);
+        })
+        .finally(() => {
+          if (isMounted) setIsSearchingCities(false);
+        });
+    }, 350);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [formData.citySearch, formData.selectedCity, isCityDropdownOpen]);
+
+  useEffect(() => {
+    if (!formData.selectedCity?.ref) {
+      setWarehouseOptions([]);
+      setWarehouseSearchResults([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingWarehouses(true);
+    deliveryService.getWarehouses(formData.selectedCity.ref)
+      .then((warehouses) => {
+        if (isMounted) setWarehouseOptions(warehouses);
+      })
+      .catch(() => {
+        if (isMounted) setWarehouseOptions([]);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingWarehouses(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [formData.selectedCity?.ref]);
+
+  useEffect(() => {
+    const search = formData.warehouseSearch.trim();
+    if (!formData.selectedCity?.ref || formData.selectedWarehouse || search.length < 2) {
+      setWarehouseSearchResults([]);
+      return;
+    }
+
+    let isMounted = true;
+    const timeoutId = window.setTimeout(() => {
+      setIsSearchingWarehouses(true);
+      deliveryService.searchWarehouses(formData.selectedCity!.ref, search)
+        .then((warehouses) => {
+          if (isMounted) setWarehouseSearchResults(warehouses);
+        })
+        .catch(() => {
+          if (isMounted) setWarehouseSearchResults([]);
+        })
+        .finally(() => {
+          if (isMounted) setIsSearchingWarehouses(false);
+        });
+    }, 350);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [formData.warehouseSearch, formData.selectedCity, formData.selectedWarehouse]);
 
   function updateField(field: keyof typeof formData, value: string) {
     setFormData((currentData) => ({ ...currentData, [field]: value }));
     setErrors((currentErrors) => ({ ...currentErrors, [field]: '' }));
+  }
+
+  function handleCitySelect(city: NovaPoshtaCity) {
+    console.debug('[Nova Poshta] selected city:', city);
+    setFormData((currentData) => ({
+      ...currentData,
+      citySearch: city.description,
+      selectedCity: city,
+      warehouseSearch: '',
+      selectedWarehouse: null,
+    }));
+    setCitySearchResults([]);
+    setWarehouseSearchResults([]);
+    setHasInteractedWithCity(true);
+    setIsCityDropdownOpen(false);
+    setErrors((currentErrors) => ({ ...currentErrors, city: '', warehouse: '' }));
+  }
+
+  function handleWarehouseSelect(warehouseRef: string) {
+    const warehouse = warehouseOptions.find((item) => item.ref === warehouseRef);
+    setFormData((currentData) => ({
+      ...currentData,
+      selectedWarehouse: warehouse || null,
+      warehouseSearch: warehouse?.description || '',
+    }));
+    setWarehouseSearchResults([]);
+    setErrors((currentErrors) => ({ ...currentErrors, warehouse: '' }));
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,16 +254,16 @@ export default function Checkout() {
     setCreatedOrderId('');
 
     const newErrors: Record<string, string> = {};
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
+    const customerName = `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim();
+    if (!customerName) newErrors.firstName = 'Customer name is required';
     if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
       newErrors.email = 'Enter a valid email address';
     }
-    if (!formData.city.trim()) newErrors.city = 'City is required';
-    if (!formData.warehouse.trim()) newErrors.warehouse = 'Warehouse or branch is required';
+    if (!formData.selectedCity) newErrors.city = 'City is required';
+    if (!formData.selectedWarehouse) newErrors.warehouse = 'Warehouse or branch is required';
     if (!paymentMethod) newErrors.paymentMethod = 'Payment method is required';
     if (cartItems.length === 0) newErrors.cart = 'Your cart is empty';
 
@@ -66,18 +280,20 @@ export default function Checkout() {
         subtotal,
         total,
         paymentMethod,
-        paymentProvider: paymentMethod === 'liqpay' ? 'LiqPay' : 'Monobank',
-        paymentStatus: 'paid',
-        status: 'production',
-        orderStatus: 'production',
+        paymentProvider: paymentMethod,
+        paymentStatus: 'pending',
+        status: 'pending',
+        orderStatus: 'pending',
         deliveryStatus: 'pending',
         trackingNumber: '',
         items: cartItems.map((item) => ({
           id: item.id,
           productId: item.productId,
+          productType: item.productType,
           name: item.title,
-          image: item.image || item.previewUrl || '',
+          image: item.screenshot3dUrl || item.previewUrl || item.image || '',
           previewUrl: item.previewUrl,
+          screenshot3dUrl: item.screenshot3dUrl,
           customImage: item.customImage,
           customDesignId: item.customDesignId,
           customDesign: item.customDesign,
@@ -91,23 +307,40 @@ export default function Checkout() {
           hasCustomDesign: item.isCustomized,
         })),
         customer: {
-          name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
+          name: customerName,
           email: formData.email.trim(),
           phone: formData.phone.trim(),
         },
         delivery: {
-          provider: 'Nova Poshta',
-          city: formData.city.trim(),
-          warehouse: formData.warehouse,
+          provider: 'nova_poshta',
+          city: {
+            ref: formData.selectedCity?.ref,
+            description: formData.selectedCity?.description,
+          },
+          warehouse: {
+            ref: formData.selectedWarehouse?.ref,
+            description: formData.selectedWarehouse?.description,
+            shortAddress: formData.selectedWarehouse?.shortAddress,
+            number: formData.selectedWarehouse?.number,
+          },
           comment: formData.deliveryComment.trim(),
         },
       });
 
-      await paymentService.createPayment(order.id, paymentMethod);
+      const payment = await paymentService.createPayment(order.id, paymentMethod);
+      const paymentUrl = payment.paymentUrl || payment.redirectUrl;
+
+      setCreatedOrderId(order.id);
+
+      if (paymentUrl) {
+        cartService.savePendingPaymentCart(cartItems);
+        window.location.href = paymentUrl;
+        return;
+      }
+
       await paymentService.updatePaymentStatus(order.id, 'paid');
       await clearCart();
-      setCreatedOrderId(order.id);
-      toast.success('Order created and paid in mock mode');
+      toast.success('Order created successfully');
       navigate(`/orders/${order.id}`);
     } catch {
       setErrors({ form: 'Unable to create order. Please try again.' });
@@ -132,7 +365,7 @@ export default function Checkout() {
       )}
       {createdOrderId && (
         <div className="bg-green-50 border border-green-200 text-green-700 rounded p-4 mb-6">
-          Order {createdOrderId} has been created. Opening mock payment confirmation...
+          Order {createdOrderId} has been created. Opening payment...
         </div>
       )}
       {!isCartLoading && cartItems.length === 0 && (
@@ -226,32 +459,113 @@ export default function Checkout() {
                   <label className="block mb-2">City</label>
                   <input
                     type="text"
-                    value={formData.city}
-                    onChange={(e) => updateField('city', e.target.value)}
+                    value={formData.citySearch}
+                    onFocus={() => {
+                      setHasInteractedWithCity(true);
+                      setIsCityDropdownOpen(true);
+                    }}
+                    onChange={(e) => {
+                      setHasInteractedWithCity(true);
+                      setIsCityDropdownOpen(true);
+                      setFormData((currentData) => ({
+                        ...currentData,
+                        citySearch: e.target.value,
+                        selectedCity: null,
+                        warehouseSearch: '',
+                        selectedWarehouse: null,
+                      }));
+                      setErrors((currentErrors) => ({ ...currentErrors, city: '', warehouse: '' }));
+                    }}
                     className={`w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 ${
                       errors.city ? 'ring-2 ring-red-500' : 'focus:ring-[#7A1F2A]'
                     }`}
-                    placeholder="Kyiv"
+                    placeholder="Select city"
                   />
+                  {isCityDropdownOpen && (isLoadingCities || isSearchingCities) && (
+                    <p className="text-xs text-[#1A1A1A] mt-2">Loading cities...</p>
+                  )}
+                  {hasInteractedWithCity
+                    && isCityDropdownOpen
+                    && hasLoadedCities
+                    && !isLoadingCities
+                    && !isSearchingCities
+                    && cityOptions.length === 0
+                    && !formData.selectedCity && (
+                    <p className="text-xs text-[#1A1A1A] mt-2">No cities found</p>
+                  )}
+                  {isCityDropdownOpen && cityOptions.length > 0 && (
+                    <div className="mt-2 border border-black/10 rounded bg-white overflow-hidden max-h-72 overflow-y-auto">
+                      {cityOptions.slice(0, 80).map((city) => (
+                        <button
+                          key={city.ref}
+                          type="button"
+                          onClick={() => handleCitySelect(city)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-[#F5F5F5]"
+                        >
+                          {city.description}
+                          {city.areaDescription ? `, ${city.areaDescription}` : ''}
+                          {city.settlementTypeDescription ? ` (${city.settlementTypeDescription})` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {formData.selectedCity && (
+                    <p className="text-xs text-[#1A1A1A] mt-2">
+                      Selected: {formData.selectedCity.description}
+                      {formData.selectedCity.areaDescription ? `, ${formData.selectedCity.areaDescription}` : ''}
+                    </p>
+                  )}
                   {errors.city && (
                     <p className="text-red-600 text-sm mt-1">{errors.city}</p>
                   )}
                 </div>
                 <div>
                   <label className="block mb-2">Warehouse / Branch / Parcel Locker</label>
+                  <input
+                    type="text"
+                    value={formData.warehouseSearch}
+                    onChange={(event) => {
+                      setFormData((currentData) => ({
+                        ...currentData,
+                        warehouseSearch: event.target.value,
+                        selectedWarehouse: null,
+                      }));
+                      setErrors((currentErrors) => ({ ...currentErrors, warehouse: '' }));
+                    }}
+                    disabled={!formData.selectedCity || isLoadingWarehouses}
+                    className={`w-full mb-2 px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 ${
+                      errors.warehouse ? 'ring-2 ring-red-500' : 'focus:ring-[#7A1F2A]'
+                    } disabled:opacity-70`}
+                    placeholder="Search warehouse, branch, or parcel locker"
+                  />
                   <select
-                    value={formData.warehouse}
-                    onChange={(e) => updateField('warehouse', e.target.value)}
+                    value={formData.selectedWarehouse?.ref || ''}
+                    onChange={(e) => handleWarehouseSelect(e.target.value)}
                     className={`w-full px-4 py-3 bg-[#F5F5F5] rounded border-none focus:outline-none focus:ring-2 ${
                       errors.warehouse ? 'ring-2 ring-red-500' : 'focus:ring-[#7A1F2A]'
                     }`}
+                    disabled={!formData.selectedCity || isLoadingWarehouses}
                   >
-                    <option value="">Select warehouse</option>
-                    <option value="branch1">Branch #1: Khreshchatyk St.</option>
-                    <option value="branch2">Branch #2: Shevchenko Blvd.</option>
-                    <option value="branch3">Branch #3: Peremohy Ave.</option>
-                    <option value="parcel-locker1">Parcel locker #12: Central Mall</option>
+                    <option value="">
+                      {isLoadingWarehouses || isSearchingWarehouses ? 'Loading warehouses...' : 'Select warehouse'}
+                    </option>
+                    {displayedWarehouses.map((warehouse) => (
+                      <option key={warehouse.ref} value={warehouse.ref}>
+                        {warehouse.description}
+                      </option>
+                    ))}
                   </select>
+                  {!isLoadingWarehouses
+                    && !isSearchingWarehouses
+                    && formData.selectedCity
+                    && displayedWarehouses.length === 0 && (
+                    <p className="text-xs text-[#1A1A1A] mt-1">No warehouses found</p>
+                  )}
+                  {formData.selectedWarehouse && (
+                    <p className="text-xs text-[#1A1A1A] mt-1">
+                      {formData.selectedWarehouse.shortAddress || formData.selectedWarehouse.description}
+                    </p>
+                  )}
                   {errors.warehouse && (
                     <p className="text-red-600 text-sm mt-1">{errors.warehouse}</p>
                   )}
@@ -288,22 +602,6 @@ export default function Checkout() {
                   />
                   <span>Monobank</span>
                 </label>
-                <label className={`flex items-center gap-3 p-4 border-2 rounded cursor-pointer transition-colors ${
-                  paymentMethod === 'liqpay' ? 'border-[#7A1F2A] bg-[#7A1F2A]/5' : 'border-black/10 hover:bg-[#F5F5F5]'
-                }`}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="liqpay"
-                    checked={paymentMethod === 'liqpay'}
-                    onChange={(e) => {
-                      setPaymentMethod(e.target.value as PaymentMethod);
-                      setErrors((currentErrors) => ({ ...currentErrors, paymentMethod: '' }));
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span>LiqPay</span>
-                </label>
                 {errors.paymentMethod && (
                   <p className="text-red-600 text-sm mt-1">{errors.paymentMethod}</p>
                 )}
@@ -320,9 +618,9 @@ export default function Checkout() {
                   {cartItems.map((item) => (
                     <div key={item.id} className="flex gap-3">
                       <div className="w-16 h-16 bg-[#F5F5F5] rounded overflow-hidden border border-black/5 flex-shrink-0">
-                        {item.previewUrl || item.customImage || item.image ? (
+                        {item.screenshot3dUrl || item.previewUrl || item.customImage || item.image ? (
                           <img
-                            src={item.previewUrl || item.customImage || item.image}
+                            src={item.screenshot3dUrl || item.previewUrl || item.customImage || item.image}
                             alt={item.title}
                             className="w-full h-full object-contain p-2"
                           />

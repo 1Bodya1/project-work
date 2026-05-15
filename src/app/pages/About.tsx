@@ -6,14 +6,14 @@ const steps = [
   { title: 'Upload design', description: 'Add your own image in a supported format.', icon: Upload },
   { title: 'Customize', description: 'Adjust position, size, and rotation on the product preview.', icon: PenTool },
   { title: 'Add to cart', description: 'Save the design and add the customized item to cart.', icon: ShoppingCart },
-  { title: 'Order and track delivery', description: 'Checkout and follow Nova Poshta tracking in mock mode.', icon: Truck },
+  { title: 'Order and track delivery', description: 'Checkout and follow Nova Poshta tracking updates.', icon: Truck },
 ];
 
 const benefits = [
   'Simple product customization flow',
   'Visual preview before adding to cart',
   'Support for base and customized products',
-  'Mock online payment flow for MVP testing',
+  'Monobank payment flow for checkout',
   'User profile, orders, and delivery tracking',
   'Admin tools for products, orders, and support',
 ];
@@ -47,9 +47,9 @@ export default function About() {
             <div>
               <h2 className="text-3xl mb-4">What the platform does</h2>
               <p className="text-[#1A1A1A]">
-                Solution combines a product catalog, a 2D customization experience, cart and
-                checkout flows, mock payment states, order history, support requests, and admin
-                management tools in one frontend MVP.
+                Solution combines a backend-connected product catalog, a 2D customization
+                experience, cart and checkout flows, order history, support requests, and admin
+                management tools in one MERN application.
               </p>
             </div>
             <div>
@@ -60,11 +60,11 @@ export default function About() {
               </p>
             </div>
             <div>
-              <h2 className="text-3xl mb-4">Diploma project</h2>
+              <h2 className="text-3xl mb-4">Backend integration</h2>
               <p className="text-[#1A1A1A]">
-                This frontend is prepared for a future MERN backend with MongoDB, JWT auth, real
-                payments, file uploads, and Nova Poshta API integration. Until then, it runs in mock
-                mode.
+                The platform connects React, Node.js, Express, MongoDB, JWT authentication,
+                product management, custom design uploads, Monobank payment, and Nova Poshta
+                delivery details into one store workflow.
               </p>
             </div>
           </div>
@@ -105,7 +105,8 @@ export default function About() {
               <h2 className="text-3xl mb-4">Built for a clear MVP experience</h2>
               <p className="text-[#1A1A1A]">
                 The goal is to keep the shopping and customization flow understandable, reliable,
-                and ready for backend integration without adding features outside the MVP scope.
+                and stable across the catalog, backend data, and order flow without adding features
+                outside the MVP scope.
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

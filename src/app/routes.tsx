@@ -17,6 +17,8 @@ import About from './pages/About';
 import PaymentPending from './pages/PaymentPending';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentFailed from './pages/PaymentFailed';
+import PaymentCancel from './pages/PaymentCancel';
+import RouteError from './pages/RouteError';
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoute from './routes/AdminRoute';
 import AdminDashboard from './pages/admin/Dashboard';
@@ -28,10 +30,12 @@ export const router = createBrowserRouter([
   {
     path: '/',
     Component: RootLayout,
+    ErrorBoundary: RouteError,
     children: [
       { index: true, Component: Home },
       { path: 'catalog', Component: Catalog },
       { path: 'product/:id', Component: ProductDetails },
+      { path: 'customize/:productId', Component: Customizer },
       { path: 'customize/:id', Component: Customizer },
       { path: 'cart', Component: Cart },
       { path: 'support', Component: Support },
@@ -48,6 +52,7 @@ export const router = createBrowserRouter([
           { path: 'payment/pending', Component: PaymentPending },
           { path: 'payment/success', Component: PaymentSuccess },
           { path: 'payment/failed', Component: PaymentFailed },
+          { path: 'payment/cancel', Component: PaymentCancel },
         ],
       },
     ],
@@ -55,6 +60,7 @@ export const router = createBrowserRouter([
   {
     path: '/admin',
     Component: AdminRoute,
+    ErrorBoundary: RouteError,
     children: [
       {
         Component: AdminLayout,

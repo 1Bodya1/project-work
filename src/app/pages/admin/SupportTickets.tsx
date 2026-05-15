@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '../../components/StatusBadge';
+import { formatOrderDateTime } from '../../lib/dateFormat';
 import { adminService } from '../../services/adminService';
 import type { SupportTicket, TicketStatus } from '../../types';
 
@@ -10,6 +11,19 @@ const ticketStatusOptions: Array<{ value: TicketStatus; label: string }> = [
   { value: 'in_progress', label: 'In Progress' },
   { value: 'resolved', label: 'Resolved' },
 ];
+
+function getTicketCustomerName(ticket: SupportTicket) {
+  const customerName = ticket.customer?.name?.trim();
+  return customerName && !/\S+@\S+\.\S+/.test(customerName) ? customerName : 'Customer';
+}
+
+function getTicketCustomerEmail(ticket: SupportTicket) {
+  return ticket.customer?.email || ticket.userEmail || '';
+}
+
+function getShortTicketNumber(ticketId: string) {
+  return ticketId.length > 12 ? `${ticketId.slice(0, 12)}...` : ticketId;
+}
 
 export default function AdminSupportTickets() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -85,23 +99,22 @@ export default function AdminSupportTickets() {
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">All Tickets</h3>
             <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-              <table className="w-full min-w-[860px]">
+              <table className="w-full min-w-[760px] table-fixed">
                 <thead>
                   <tr className="border-b border-black/10">
-                    <th className="text-left pb-3 text-sm">Ticket Number</th>
-                    <th className="text-left pb-3 text-sm">User</th>
-                    <th className="text-left pb-3 text-sm">Order Number</th>
-                    <th className="text-left pb-3 text-sm">Subject</th>
-                    <th className="text-left pb-3 text-sm">Message</th>
-                    <th className="text-left pb-3 text-sm">Date</th>
-                    <th className="text-left pb-3 text-sm">Status</th>
-                    <th className="text-left pb-3 text-sm">Action</th>
+                    <th className="w-[150px] text-left pb-3 pr-4 text-sm">Ticket</th>
+                    <th className="w-[160px] text-left pb-3 pr-4 text-sm">User</th>
+                    <th className="w-[120px] text-left pb-3 pr-4 text-sm">Order</th>
+                    <th className="w-[180px] text-left pb-3 pr-4 text-sm">Subject</th>
+                    <th className="w-[150px] text-left pb-3 pr-4 text-sm">Date</th>
+                    <th className="w-[110px] text-left pb-3 pr-4 text-sm">Status</th>
+                    <th className="w-[80px] text-left pb-3 text-sm">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadError ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center">
+                      <td colSpan={7} className="py-8 text-center">
                         <p className="text-red-600 mb-4">{loadError}</p>
                         <button
                           type="button"
@@ -114,7 +127,7 @@ export default function AdminSupportTickets() {
                     </tr>
                   ) : tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center">
+                      <td colSpan={7} className="py-8 text-center">
                         <h4 className="mb-2">No support tickets</h4>
                         <p className="text-[#1A1A1A]">Customer support requests will appear here.</p>
                       </td>
@@ -127,15 +140,24 @@ export default function AdminSupportTickets() {
                       }`}
                       onClick={() => setSelectedTicketId(ticket.id)}
                     >
-                      <td className="py-4">{ticket.id}</td>
-                      <td className="py-4 text-[#1A1A1A]">{ticket.customer.name}</td>
-                      <td className="py-4 text-[#1A1A1A]">{ticket.orderNumber || '-'}</td>
-                      <td className="py-4">{ticket.subject}</td>
-                      <td className="py-4 text-[#1A1A1A] max-w-[240px]">
-                        <span className="line-clamp-2">{ticket.message}</span>
+                      <td className="py-4 pr-4">
+                        <span className="block truncate font-mono text-xs" title={ticket.id}>
+                          {getShortTicketNumber(ticket.id)}
+                        </span>
                       </td>
-                      <td className="py-4 text-[#1A1A1A]">{ticket.date}</td>
-                      <td className="py-4">
+                      <td className="py-4 pr-4 text-[#1A1A1A]">
+                        <span className="block truncate">{getTicketCustomerName(ticket)}</span>
+                      </td>
+                      <td className="py-4 pr-4 text-[#1A1A1A]">
+                        <span className="block truncate">{ticket.orderNumber || '-'}</span>
+                      </td>
+                      <td className="py-4 pr-4 align-top">
+                        <span className="block line-clamp-2" title={ticket.subject}>{ticket.subject}</span>
+                      </td>
+                      <td className="py-4 pr-4 text-[#1A1A1A] whitespace-nowrap">
+                        {formatOrderDateTime(ticket.date)}
+                      </td>
+                      <td className="py-4 pr-4">
                         <StatusBadge status={ticket.status} size="sm" />
                       </td>
                       <td className="py-4">
@@ -164,12 +186,12 @@ export default function AdminSupportTickets() {
               <div className="space-y-4 mb-6">
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Ticket Number</p>
-                  <p>{selectedTicket.id}</p>
+                  <p className="break-all">{selectedTicket.id}</p>
                 </div>
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">User</p>
-                  <p>{selectedTicket.customer.name}</p>
-                  <p className="text-sm text-[#1A1A1A]">{selectedTicket.customer.email}</p>
+                  <p>{getTicketCustomerName(selectedTicket)}</p>
+                  <p className="text-sm text-[#1A1A1A]">{getTicketCustomerEmail(selectedTicket) || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Order Number</p>
@@ -181,13 +203,13 @@ export default function AdminSupportTickets() {
                 </div>
                 <div>
                   <p className="text-sm text-[#1A1A1A] mb-1">Date</p>
-                  <p>{selectedTicket.date}</p>
+                  <p>{formatOrderDateTime(selectedTicket.date)}</p>
                 </div>
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-6">
                 <h4 className="mb-3">Message</h4>
-                <div className="bg-[#F5F5F5] rounded p-4 text-sm text-[#1A1A1A]">
+                <div className="bg-[#F5F5F5] rounded p-4 text-sm text-[#1A1A1A] whitespace-pre-wrap break-words">
                   {selectedTicket.message}
                 </div>
               </div>

@@ -1,4 +1,5 @@
-import { mockProducts } from '../mocks/mockProducts';
+import { productService } from './productService';
+import { apiRequestAny, unwrapApiData, USE_BACKEND } from './api';
 import { DESIGN_STORAGE_KEY } from './designService';
 import { ORDERS_STORAGE_KEY } from './orderService';
 import { SUPPORT_TICKETS_STORAGE_KEY } from './supportService';
@@ -7,10 +8,23 @@ import type { CustomDesign, Order, OrderItem, OrderStatus, Product, SupportTicke
 type CreateProductData = Omit<Product, 'id'>;
 type UpdateProductData = Partial<Omit<Product, 'id'>>;
 type UpdateOrderData = Partial<Pick<Order, 'orderStatus' | 'status' | 'trackingNumber' | 'deliveryStatus'>>;
-const PRODUCTS_STORAGE_KEY = 'solution_admin_products';
+export const PRODUCTS_STORAGE_KEY = 'solution_admin_products';
 const DELETED_PRODUCTS_STORAGE_KEY = 'solution_deleted_products';
 const LEGACY_DEMO_ORDER_IDS = new Set(['ORD-001', 'ORD-002', 'ORD-013', 'ORD-014', 'ORD-015']);
 const LEGACY_DEMO_TICKET_IDS = new Set(['SUP-006', 'SUP-007', 'SUP-008']);
+
+function joinName(firstName?: string, lastName?: string) {
+  return [firstName, lastName].filter(Boolean).join(' ').trim();
+}
+
+function isEmailLike(value?: string) {
+  return Boolean(value && /\S+@\S+\.\S+/.test(value));
+}
+
+function getDisplayName(...names: Array<string | undefined>) {
+  const name = names.map((value) => value?.trim()).find((value) => value && !isEmailLike(value));
+  return name || 'Customer';
+}
 
 function readStoredProducts() {
   const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
@@ -93,17 +107,56 @@ function writeStoredSupportTickets(tickets: SupportTicket[]) {
 }
 
 function getAllSupportTickets() {
-  return readStoredSupportTickets();
+  return readStoredSupportTickets().map(normalizeSupportTicket);
+}
+
+function normalizeSupportTicket(ticket: SupportTicket): SupportTicket {
+  const record = ticket as SupportTicket & {
+    _id?: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    fullName?: string;
+    created_at?: string;
+    user?: { name?: string; fullName?: string; email?: string; firstName?: string; lastName?: string };
+  };
+  const userName = getDisplayName(
+    record.user?.fullName,
+    record.user?.name,
+    joinName(record.user?.firstName, record.user?.lastName),
+    record.fullName,
+    record.name,
+    joinName(record.firstName, record.lastName),
+    record.customer?.name,
+  );
+  const userEmail = record.user?.email || record.customer?.email || record.userEmail || '';
+
+  return {
+    ...ticket,
+    id: String(ticket.id || record._id || `SUP-${Date.now()}`),
+    customer: {
+      name: userName,
+      email: userEmail,
+    },
+    userEmail,
+    subject: ticket.subject || 'Support request',
+    message: ticket.message || '',
+    status: ticket.status || 'new',
+    date: ticket.date || ticket.createdAt || record.created_at || new Date().toISOString(),
+    createdAt: ticket.createdAt || record.created_at,
+  };
 }
 
 function normalizeOrder(order: Order): Order {
+  const record = order as Order & { createdAt?: string; created_at?: string; updatedAt?: string; updated_at?: string };
   const rawStatus = order.orderStatus || order.status || 'new';
   const orderStatus = rawStatus === 'pending' ? 'new' : rawStatus === 'delivered' ? 'completed' : rawStatus;
   const designs = readStoredDesigns();
-  const items = order.items.map((item) => enrichOrderItemWithDesign(item, designs));
+  const items = (order.items || []).map((item) => enrichOrderItemWithDesign(item, designs));
 
   return {
     ...order,
+    date: order.date || record.createdAt || record.created_at || record.updatedAt || record.updated_at || new Date().toISOString(),
     items,
     status: orderStatus,
     orderStatus,
@@ -129,7 +182,7 @@ function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): Or
   if (!resolvedDesign) {
     return {
       ...item,
-      previewUrl: item.previewUrl || item.customDesignImage || item.customImage,
+      previewUrl: item.screenshot3dUrl || item.previewUrl || item.customDesignImage || item.customImage,
       uploadedImageUrl: item.uploadedImageUrl || item.customImage || item.customDesignImage,
       hasCustomDesign: item.hasCustomDesign || Boolean(item.customDesignId || item.previewUrl || item.customImage || item.customDesignImage),
     };
@@ -140,6 +193,7 @@ function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): Or
     customDesign: resolvedDesign,
     customDesignId: item.customDesignId || resolvedDesign.id,
     previewUrl: item.previewUrl || resolvedDesign.previewUrl || resolvedDesign.uploadedImageUrl || resolvedDesign.imageUrl,
+    screenshot3dUrl: item.screenshot3dUrl || resolvedDesign.screenshot3dUrl,
     uploadedImageUrl: item.uploadedImageUrl || resolvedDesign.uploadedImageUrl || resolvedDesign.imageUrl,
     customImage: item.customImage || resolvedDesign.uploadedImageUrl || resolvedDesign.previewUrl,
     customDesignImage: item.customDesignImage || resolvedDesign.previewUrl || resolvedDesign.uploadedImageUrl,
@@ -153,7 +207,7 @@ function enrichOrderItemWithDesign(item: OrderItem, designs: CustomDesign[]): Or
     usedPlacements:
       item.usedPlacements ||
       Object.values(resolvedDesign.placements || {})
-        .filter((placement) => placement.uploadedImage)
+        .filter((placement) => placement && typeof placement === 'object' && (placement.uploadedImage || placement.uploadedImageUrl || placement.previewUrl))
         .map((placement) => placement.label || 'Placement'),
   };
 }
@@ -193,54 +247,124 @@ async function updateOrder(id: string, data: UpdateOrderData) {
 }
 
 export const adminService = {
-  async getProducts() {
-    const storedProducts = readStoredProducts();
-    const storedProductIds = new Set(storedProducts.map((product) => product.id));
-    const deletedProductIds = new Set(readDeletedProductIds());
-    const availableMockProducts = mockProducts.filter(
-      (product) => !storedProductIds.has(product.id) && !deletedProductIds.has(product.id),
-    );
+  async getDashboardStats() {
+    return null;
+  },
 
-    return [...storedProducts, ...availableMockProducts];
+  async getProducts() {
+    if (USE_BACKEND) {
+      return productService.getAdminProducts();
+    }
+
+    const storedProducts = readStoredProducts();
+    const products = await productService.getProducts();
+    const storedIds = new Set(storedProducts.map((product) => product.id));
+    return [
+      ...storedProducts,
+      ...products.filter((product) => !storedIds.has(product.id)),
+    ];
   },
 
   async createProduct(data: CreateProductData) {
-    const product = { id: `PRD-${Date.now()}`, ...data };
-    writeStoredProducts([product, ...readStoredProducts()]);
-    return product;
+    if (USE_BACKEND) {
+      return productService.createProduct(data);
+    }
+
+    try {
+      return await productService.createProduct(data);
+    } catch (error) {
+      console.error('Failed to create product via backend:', error);
+      // Fallback to local storage
+      const product = { id: `PRD-${Date.now()}`, ...data };
+      writeStoredProducts([product, ...readStoredProducts()]);
+      return product;
+    }
   },
 
   async updateProduct(id: string, data: UpdateProductData) {
-    const products = await this.getProducts();
-    const product = products.find((item) => item.id === id);
-    if (!product) return null;
+    if (USE_BACKEND) {
+      return productService.updateProduct(id, data);
+    }
 
-    const updatedProduct = { ...product, ...data };
-    const storedProducts = readStoredProducts();
-    const nextStoredProducts = storedProducts.some((item) => item.id === id)
-      ? storedProducts.map((item) => (item.id === id ? updatedProduct : item))
-      : [updatedProduct, ...storedProducts];
+    try {
+      return await productService.updateProduct(id, data);
+    } catch (error) {
+      console.error('Failed to update product via backend:', error);
+      // Fallback to local storage
+      const products = readStoredProducts();
+      const product = products.find((item) => item.id === id);
+      if (!product) return null;
 
-    writeStoredProducts(nextStoredProducts);
-    return updatedProduct;
+      const updatedProduct = { ...product, ...data };
+      const nextStoredProducts = products.map((item) =>
+        item.id === id ? updatedProduct : item,
+      );
+
+      writeStoredProducts(nextStoredProducts);
+      return updatedProduct;
+    }
   },
 
   async deleteProduct(id: string) {
-    writeStoredProducts(readStoredProducts().filter((product) => product.id !== id));
-    writeDeletedProductIds(Array.from(new Set([...readDeletedProductIds(), id])));
-    return { success: true, id };
+    if (USE_BACKEND) {
+      return productService.deleteProduct(id);
+    }
+
+    try {
+      return await productService.deleteProduct(id);
+    } catch (error) {
+      console.error('Failed to delete product via backend:', error);
+      // Fallback to local storage
+      writeStoredProducts(readStoredProducts().filter((product) => product.id !== id));
+      writeDeletedProductIds(Array.from(new Set([...readDeletedProductIds(), id])));
+      return { success: true, id };
+    }
   },
 
   async getOrders() {
-    return getAllOrders();
+    if (!USE_BACKEND) return getAllOrders();
+
+    try {
+      const orders = unwrapApiData<Order[]>(await apiRequestAny([
+        '/admin/orders',
+        '/orders/admin/all',
+      ]), ['orders', 'items']);
+      return Array.isArray(orders) ? orders.map(normalizeOrder) : [];
+    } catch (error) {
+      console.error('Failed to fetch admin orders:', error);
+      return getAllOrders();
+    }
   },
 
   async getOrderById(id: string) {
-    return (await getAllOrders()).find((order) => order.id === id) || null;
+    if (!USE_BACKEND) return (await getAllOrders()).find((order) => order.id === id) || null;
+
+    try {
+      return normalizeOrder(unwrapApiData<Order>(await apiRequestAny([
+        `/admin/orders/${id}`,
+        `/orders/admin/${id}`,
+      ]), ['order']));
+    } catch (error) {
+      console.error(`Failed to fetch admin order ${id}:`, error);
+      return (await getAllOrders()).find((order) => order.id === id) || null;
+    }
   },
 
   async updateOrder(id: string, data: UpdateOrderData) {
-    return updateOrder(id, data);
+    if (!USE_BACKEND) return updateOrder(id, data);
+
+    try {
+      return normalizeOrder(unwrapApiData<Order>(await apiRequestAny([
+        `/admin/orders/${id}`,
+        `/orders/admin/${id}/status`,
+      ], {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }), ['order']));
+    } catch (error) {
+      console.error(`Failed to update admin order ${id}:`, error);
+      throw error;
+    }
   },
 
   async updateOrderStatus(id: string, status: OrderStatus) {
@@ -248,26 +372,65 @@ export const adminService = {
   },
 
   async updateOrderTracking(id: string, trackingNumber: string) {
-    return updateOrder(id, { trackingNumber });
+    if (!USE_BACKEND) return updateOrder(id, { trackingNumber });
+
+    try {
+      return normalizeOrder(unwrapApiData<Order>(await apiRequestAny([
+        `/admin/orders/${id}/tracking`,
+        `/orders/admin/${id}/tracking`,
+      ], {
+        method: 'PATCH',
+        body: JSON.stringify({ trackingNumber }),
+      }), ['order']));
+    } catch (error) {
+      console.error(`Failed to update tracking for order ${id}:`, error);
+      throw error;
+    }
   },
 
   async getSupportTickets() {
-    return getAllSupportTickets();
+    if (!USE_BACKEND) return getAllSupportTickets();
+
+    try {
+      const tickets = unwrapApiData<SupportTicket[]>(await apiRequestAny([
+        '/admin/support/tickets',
+        '/support/admin/all',
+      ]), ['tickets', 'items']);
+      return Array.isArray(tickets) ? tickets.map(normalizeSupportTicket) : [];
+    } catch (error) {
+      console.error('Failed to fetch admin support tickets:', error);
+      throw error;
+    }
   },
 
   async updateSupportTicketStatus(id: string, status: TicketStatus) {
-    const ticket = getAllSupportTickets().find((item) => item.id === id);
-    if (!ticket) return null;
+    if (!USE_BACKEND) {
+      const ticket = getAllSupportTickets().find((item) => item.id === id);
+      if (!ticket) return null;
 
-    const updatedTicket = { ...ticket, status };
-    const storedTickets = readStoredSupportTickets();
-    const nextStoredTickets = storedTickets.some((item) => item.id === id)
-      ? storedTickets.map((item) => (item.id === id ? updatedTicket : item))
-      : [updatedTicket, ...storedTickets];
+      const updatedTicket = { ...ticket, status };
+      const storedTickets = readStoredSupportTickets();
+      const nextStoredTickets = storedTickets.some((item) => item.id === id)
+        ? storedTickets.map((item) => (item.id === id ? updatedTicket : item))
+        : [updatedTicket, ...storedTickets];
 
-    writeStoredSupportTickets(nextStoredTickets);
-    return updatedTicket;
+      writeStoredSupportTickets(nextStoredTickets);
+      return updatedTicket;
+    }
+
+    try {
+      return normalizeSupportTicket(unwrapApiData<SupportTicket>(await apiRequestAny([
+        `/admin/support/tickets/${id}`,
+        `/support/admin/${id}/status`,
+      ], {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }), ['ticket']));
+    } catch (error) {
+      console.error(`Failed to update support ticket ${id}:`, error);
+      throw error;
+    }
   },
 };
 
-export { PRODUCTS_STORAGE_KEY, DELETED_PRODUCTS_STORAGE_KEY };
+export { DELETED_PRODUCTS_STORAGE_KEY };

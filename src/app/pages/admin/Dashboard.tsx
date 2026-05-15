@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { Clock, CreditCard, DollarSign, Eye, MessageSquare, Package, Truck } from 'lucide-react';
 import { StatusBadge } from '../../components/StatusBadge';
+import { formatOrderDateTime } from '../../lib/dateFormat';
 import { adminService } from '../../services/adminService';
 import type { Order, SupportTicket } from '../../types';
 
@@ -38,22 +39,30 @@ function getCustomerName(order: Order) {
   return order.customer?.name || 'Customer';
 }
 
+function getOrderDate(order: Order) {
+  const record = order as Order & { createdAt?: string; created_at?: string; updatedAt?: string; updated_at?: string };
+  return record.date || record.createdAt || record.created_at || record.updatedAt || record.updated_at || '';
+}
+
 export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [backendStats, setBackendStats] = useState<Record<string, number> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [nextOrders, nextSupportTickets] = await Promise.all([
+        const [nextOrders, nextSupportTickets, nextBackendStats] = await Promise.all([
           adminService.getOrders(),
           adminService.getSupportTickets(),
+          adminService.getDashboardStats(),
         ]);
 
         setOrders(nextOrders);
         setSupportTickets(nextSupportTickets);
+        setBackendStats(nextBackendStats);
         setErrorMessage('');
       } catch {
         setErrorMessage('Unable to load dashboard data.');
@@ -68,7 +77,7 @@ export default function AdminDashboard() {
   const stats = useMemo(() => {
     const paidOrders = orders.filter((order) => order.paymentStatus === 'paid');
 
-    return {
+    const computedStats = {
       totalOrders: orders.length,
       paidOrders: paidOrders.length,
       inProduction: orders.filter((order) => getOrderStatus(order) === 'production').length,
@@ -76,10 +85,20 @@ export default function AdminDashboard() {
       supportRequests: supportTickets.length,
       totalRevenue: paidOrders.reduce((sum, order) => sum + order.total, 0),
     };
-  }, [orders, supportTickets]);
+
+    return {
+      ...computedStats,
+      totalOrders: backendStats?.totalOrders ?? computedStats.totalOrders,
+      paidOrders: backendStats?.paidOrders ?? computedStats.paidOrders,
+      inProduction: backendStats?.inProduction ?? computedStats.inProduction,
+      shippedOrders: backendStats?.shippedOrders ?? computedStats.shippedOrders,
+      supportRequests: backendStats?.supportRequests ?? computedStats.supportRequests,
+      totalRevenue: backendStats?.totalRevenue ?? computedStats.totalRevenue,
+    };
+  }, [orders, supportTickets, backendStats]);
 
   const recentOrders = useMemo(
-    () => [...orders].sort((firstOrder, secondOrder) => secondOrder.date.localeCompare(firstOrder.date)).slice(0, 5),
+    () => [...orders].sort((firstOrder, secondOrder) => getOrderDate(secondOrder).localeCompare(getOrderDate(firstOrder))).slice(0, 5),
     [orders],
   );
 
@@ -177,7 +196,7 @@ export default function AdminDashboard() {
                   <td className="py-4">
                     <StatusBadge status={toBadgeStatus(getOrderStatus(order))} size="sm" />
                   </td>
-                  <td className="py-4 text-[#1A1A1A]">{order.date}</td>
+                  <td className="py-4 text-[#1A1A1A]">{formatOrderDateTime(order.date)}</td>
                   <td className="py-4">
                     <Link
                       to="/admin/orders"

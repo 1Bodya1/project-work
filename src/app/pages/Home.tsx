@@ -1,10 +1,64 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { ProductCard } from '../components/ProductCard';
+import { ProductCardSkeleton } from '../components/LoadingState';
 import { Upload, Paintbrush, ShoppingBag, Truck } from 'lucide-react';
-import { mockProducts } from '../mocks/mockProducts';
+import { productService } from '../services/productService';
+import type { Product } from '../types';
+
+const popularCategories = [
+  {
+    title: 'Laptops',
+    image: '/categories/macbook.png',
+    href: '/catalog?category=Laptops',
+  },
+  {
+    title: 'Mugs',
+    image: '/categories/mug.png',
+    href: '/catalog?category=Mugs',
+  },
+  {
+    title: 'T-shirt',
+    image: '/categories/tshirt.png',
+    href: '/catalog?category=T-shirt',
+  },
+];
 
 export default function Home() {
-  const featuredProducts = mockProducts.slice(0, 4);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [isLoadingFeatured, setIsLoadingFeatured] = useState(true);
+  const [featuredError, setFeaturedError] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadFeaturedProducts() {
+      setIsLoadingFeatured(true);
+      setFeaturedError('');
+
+      try {
+        const products = await productService.getFeaturedProducts(3);
+        if (isMounted) {
+          setFeaturedProducts(products);
+        }
+      } catch {
+        if (isMounted) {
+          setFeaturedProducts([]);
+          setFeaturedError('Unable to load featured products right now.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingFeatured(false);
+        }
+      }
+    }
+
+    loadFeaturedProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div>
@@ -28,11 +82,23 @@ export default function Home() {
       <section className="bg-[#F5F5F5] py-16">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl md:text-4xl mb-12 text-center">Featured Products</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredProducts.map((product) => (
-              <ProductCard key={product.id} {...product} />
-            ))}
-          </div>
+          {featuredError ? (
+            <p className="text-center text-[#1A1A1A]">{featuredError}</p>
+          ) : isLoadingFeatured ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, index) => (
+                <ProductCardSkeleton key={index} />
+              ))}
+            </div>
+          ) : featuredProducts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featuredProducts.map((product) => (
+                <ProductCard key={product.id} {...product} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-[#1A1A1A]">No featured products available yet.</p>
+          )}
         </div>
       </section>
 
@@ -83,49 +149,26 @@ export default function Home() {
 
       <section className="bg-[#F5F5F5] py-16">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl mb-12 text-center">Popular Categories</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Link
-              to="/catalog?category=t-shirts"
-              className="group relative aspect-square bg-white rounded overflow-hidden"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&h=600&fit=crop"
-                alt="T-Shirts"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                <h3 className="text-white text-2xl">T-Shirts</h3>
-              </div>
-            </Link>
-
-            <Link
-              to="/catalog?category=hoodies"
-              className="group relative aspect-square bg-white rounded overflow-hidden"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600&h=600&fit=crop"
-                alt="Hoodies"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                <h3 className="text-white text-2xl">Hoodies</h3>
-              </div>
-            </Link>
-
-            <Link
-              to="/catalog?category=sweatshirts"
-              className="group relative aspect-square bg-white rounded overflow-hidden"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600&h=600&fit=crop"
-                alt="Sweatshirts"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                <h3 className="text-white text-2xl">Sweatshirts</h3>
-              </div>
-            </Link>
+          <h2 className="text-3xl md:text-4xl mb-12 text-center">Popular Category</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {popularCategories.map((category) => (
+              <Link
+                key={category.title}
+                to={category.href}
+                className="group bg-white rounded overflow-hidden border border-black/10 hover:border-[#7A1F2A]/30 transition-colors"
+              >
+                <div className="aspect-square bg-[#F5F5F5] flex items-center justify-center overflow-hidden">
+                  <img
+                    src={category.image}
+                    alt={category.title}
+                    className="w-full h-full object-contain p-6 group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+                <div className="p-4 text-center">
+                  <h3 className="text-xl">{category.title}</h3>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>

@@ -1,9 +1,43 @@
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Check } from 'lucide-react';
+import { paymentService } from '../services/paymentService';
+import { useCart } from '../store/CartContext';
 
 export default function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId') || '';
+  const [statusMessage, setStatusMessage] = useState('Confirming payment status...');
+  const { clearCart } = useCart();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function confirmPaymentReturn() {
+      if (!orderId) {
+        setStatusMessage('Payment successful. Your order has been created.');
+        return;
+      }
+
+      try {
+        await paymentService.updatePaymentStatus(orderId, 'paid');
+        await clearCart();
+        if (isMounted) {
+          setStatusMessage('Payment successful. Your order has been created.');
+        }
+      } catch {
+        if (isMounted) {
+          setStatusMessage('Payment successful. Your order has been created. Final status may update shortly.');
+        }
+      }
+    }
+
+    confirmPaymentReturn();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [orderId]);
 
   return (
     <div className="container mx-auto px-4 py-20">
@@ -13,10 +47,7 @@ export default function PaymentSuccess() {
         </div>
         <h1 className="text-4xl mb-4">Payment Successful</h1>
         <p className="text-xl text-[#1A1A1A] mb-2">
-          Your payment has been confirmed.
-        </p>
-        <p className="text-[#1A1A1A] mb-2">
-          Order number: <span className="font-medium">{orderId || 'Not available'}</span>
+          {statusMessage}
         </p>
         <p className="text-[#1A1A1A] mb-8">
           Payment status: <span className="text-green-700">paid</span>

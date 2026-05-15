@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router';
 import { ArrowLeft, Check, Package, RefreshCw, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '../components/StatusBadge';
+import { formatOrderDateTime } from '../lib/dateFormat';
 import { deliveryService, mockDeliveryStatuses } from '../services/deliveryService';
 import { orderService } from '../services/orderService';
 import type { Order, OrderTimelineStep } from '../types';
@@ -19,13 +20,14 @@ function buildDeliveryTimeline(order: Order): OrderTimelineStep[] {
 
   return mockDeliveryStatuses.map((status, index) => ({
     status,
-    date: index === 0 ? order.date : '',
+    date: index === 0 ? formatOrderDateTime(order.date) : '',
     completed: index <= activeStatusIndex,
   }));
 }
 
 function getItemPreview(item: Order['items'][number]) {
-  return item.previewUrl
+  return item.screenshot3dUrl
+    || item.previewUrl
     || item.customImage
     || item.customDesignImage
     || item.customDesign?.previewUrl
@@ -36,11 +38,28 @@ function isCustomizedItem(item: Order['items'][number]) {
   return Boolean(
     item.hasCustomDesign
     || item.customDesignId
+    || item.screenshot3dUrl
     || item.previewUrl
     || item.customImage
     || item.customDesignImage
     || item.customDesign?.previewUrl,
   );
+}
+
+function getDeliveryCityLabel(city: Order['delivery']['city'] | undefined) {
+  return typeof city === 'object' && city ? city.description || city.ref || '-' : city || '-';
+}
+
+function getDeliveryWarehouseLabel(warehouse: Order['delivery']['warehouse'] | undefined) {
+  if (typeof warehouse === 'object' && warehouse) {
+    return [
+      warehouse.description,
+      warehouse.shortAddress,
+      warehouse.number ? `#${warehouse.number}` : '',
+    ].filter(Boolean).join(', ') || warehouse.ref || '-';
+  }
+
+  return warehouse || '-';
 }
 
 export default function OrderDetails() {
@@ -76,7 +95,7 @@ export default function OrderDetails() {
         delivery: order.delivery ? { ...order.delivery, status: delivery.status } : order.delivery,
         timeline: mockDeliveryStatuses.map((status, index) => ({
           status,
-          date: index === 0 ? order.date : '',
+          date: index === 0 ? formatOrderDateTime(order.date) : '',
           completed: index <= Math.max(mockDeliveryStatuses.indexOf(delivery.status), 0),
         })),
       });
@@ -114,7 +133,8 @@ export default function OrderDetails() {
   };
   const orderStatus = getOrderStatus(order);
   const timeline = buildDeliveryTimeline(order);
-  const subtotal = order.items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+  const orderItems = order.items || [];
+  const subtotal = orderItems.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
   const shipping = subtotal > 1000 ? 0 : 50;
   const total = order.total || subtotal + shipping;
 
@@ -131,8 +151,8 @@ export default function OrderDetails() {
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
           <div>
-            <h1 className="text-3xl md:text-4xl mb-2">Order {order.id}</h1>
-            <p className="text-[#1A1A1A]">Placed on {order.date}</p>
+            <h1 className="text-3xl md:text-4xl mb-2">Order details</h1>
+            <p className="text-[#1A1A1A]">Placed on {formatOrderDateTime(order.date)}</p>
           </div>
           <div className="flex gap-2">
             <StatusBadge status={order.paymentStatus} />
@@ -146,15 +166,16 @@ export default function OrderDetails() {
           <div className="bg-white border border-black/10 rounded-lg p-6">
             <h3 className="mb-6">Products</h3>
             <div className="space-y-4">
-              {order.items.map((item, index) => {
+              {orderItems.map((item, index) => {
                 const preview = getItemPreview(item);
                 const isCustomized = isCustomizedItem(item);
+                const itemName = item.name || 'Product';
 
                 return (
-                  <div key={`${item.name}-${index}`} className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-black/10 last:border-0">
+                  <div key={`${itemName}-${index}`} className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-black/10 last:border-0">
                     <div className="w-full sm:w-28 h-32 sm:h-28 bg-[#F5F5F5] rounded overflow-hidden border border-black/5 flex-shrink-0">
                       {preview ? (
-                        <img src={preview} alt={item.name} className="w-full h-full object-contain p-2" />
+                        <img src={preview} alt={itemName} className="w-full h-full object-contain p-2" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-xs text-[#1A1A1A]">
                           No preview
@@ -163,7 +184,7 @@ export default function OrderDetails() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <h4>{item.name}</h4>
+                        <h4>{itemName}</h4>
                         {isCustomized && (
                           <span className="text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
                             <Check className="w-3.5 h-3.5" />
@@ -197,11 +218,11 @@ export default function OrderDetails() {
                         </p>
                       )}
                       <p className="text-sm text-[#1A1A1A]">
-                        Quantity: {item.quantity} x ₴{item.price || 0}
+                        Quantity: {item.quantity || 1} x ₴{item.price || 0}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg">₴{(item.price || 0) * item.quantity}</p>
+                      <p className="text-lg">₴{(item.price || 0) * (item.quantity || 1)}</p>
                     </div>
                   </div>
                 );
@@ -281,8 +302,8 @@ export default function OrderDetails() {
               </div>
               <div>
                 <p className="text-[#1A1A1A] mb-1">Delivery Address</p>
-                <p>{delivery.city}</p>
-                <p>{delivery.warehouse}</p>
+                <p>{getDeliveryCityLabel(delivery.city)}</p>
+                <p>{getDeliveryWarehouseLabel(delivery.warehouse)}</p>
               </div>
               <div>
                 <p className="text-[#1A1A1A] mb-1">Delivery Status</p>

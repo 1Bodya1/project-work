@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { Minus, Plus, X, Edit2, ShoppingBag, Check } from 'lucide-react';
 import { useCart } from '../store/CartContext';
@@ -10,6 +11,11 @@ const placementLabels: Record<string, string> = {
   rightSleeve: 'Right sleeve',
   leftSide: 'Left side',
   rightSide: 'Right side',
+  wrap: 'Wrap',
+  handle: 'Handle',
+  outer: 'Outer side',
+  lid: 'Screen back',
+  palmRest: 'Lower case',
 };
 
 function getUsedPlacementLabels(item: CartItem) {
@@ -21,12 +27,18 @@ function getUsedPlacementLabels(item: CartItem) {
   if (!placements) return [];
 
   return Object.entries(placements)
-    .filter(([, placement]) => placement.uploadedImage || placement.uploadedImageUrl || placement.previewUrl)
+    .filter(([, placement]) => placement && (placement.uploadedImage || placement.uploadedImageUrl || placement.previewUrl))
     .map(([placementId, placement]) => placement.label || placementLabels[placementId] || 'Placement');
 }
 
 export default function Cart() {
-  const { items, isLoading, updateItem, removeItem } = useCart();
+  const { items, isLoading, updateItem, removeItem, restorePendingPaymentCart } = useCart();
+
+  useEffect(() => {
+    if (!isLoading && items.length === 0) {
+      restorePendingPaymentCart();
+    }
+  }, [isLoading, items.length, restorePendingPaymentCart]);
 
   const updateQuantity = async (id: string, quantity: number, change: number) => {
     await updateItem(id, { quantity: Math.max(1, quantity + change) });
@@ -78,7 +90,7 @@ export default function Cart() {
               {(() => {
                 const usedPlacements = getUsedPlacementLabels(item);
 
-                const previewImage = item.previewUrl || item.customImage || item.image;
+                const previewImage = item.screenshot3dUrl || item.previewUrl || item.customImage || item.image;
 
                 return (
                   <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
@@ -180,7 +192,9 @@ export default function Cart() {
                         <div className="flex items-center justify-between sm:justify-end gap-4">
                           {item.isCustomized && (
                             <Link
-                              to={`/customize/${item.productId}`}
+                              to={`/customize/${item.productId}?cartItemId=${encodeURIComponent(item.id)}${
+                                item.customDesignId ? `&designId=${encodeURIComponent(item.customDesignId)}` : ''
+                              }`}
                               className="text-sm text-[#7A1F2A] hover:underline flex items-center gap-1"
                             >
                               <Edit2 className="w-4 h-4" />
